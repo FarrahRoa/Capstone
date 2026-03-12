@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\ApproveReservationRequest;
+use App\Http\Requests\Api\Admin\CancelReservationRequest;
+use App\Http\Requests\Api\Admin\RejectReservationRequest;
 use App\Mail\ReservationApprovedMail;
 use App\Mail\ReservationRejectedMail;
 use App\Models\Reservation;
@@ -35,7 +38,7 @@ class ReservationController extends Controller
         return response()->json($reservation);
     }
 
-    public function approve(Request $request, Reservation $reservation): JsonResponse
+    public function approve(ApproveReservationRequest $request, Reservation $reservation): JsonResponse
     {
         if ($reservation->status !== Reservation::STATUS_PENDING_APPROVAL) {
             return response()->json(['message' => 'Reservation is not pending approval.'], 422);
@@ -61,7 +64,7 @@ class ReservationController extends Controller
         ]);
     }
 
-    public function reject(Request $request, Reservation $reservation): JsonResponse
+    public function reject(RejectReservationRequest $request, Reservation $reservation): JsonResponse
     {
         if (!in_array($reservation->status, [Reservation::STATUS_PENDING_APPROVAL, Reservation::STATUS_EMAIL_VERIFICATION_PENDING])) {
             return response()->json(['message' => 'Reservation cannot be rejected.'], 422);
@@ -84,7 +87,7 @@ class ReservationController extends Controller
         ]);
     }
 
-    public function cancel(Request $request, Reservation $reservation): JsonResponse
+    public function cancel(CancelReservationRequest $request, Reservation $reservation): JsonResponse
     {
         if ($reservation->status === Reservation::STATUS_CANCELLED) {
             return response()->json(['message' => 'Already cancelled.'], 422);
@@ -106,17 +109,17 @@ class ReservationController extends Controller
 
     public function override(Request $request, Reservation $reservation): JsonResponse
     {
-        $request->validate(['notes' => 'nullable|string|max:500']);
-        // Override: e.g. force-approve despite conflict or change slot. We treat as admin making a special approval.
-        if ($reservation->status === Reservation::STATUS_PENDING_APPROVAL) {
-            $reservationNumber = 'RES-' . strtoupper(Str::random(8));
-            $reservation->update([
-                'status' => Reservation::STATUS_APPROVED,
-                'reservation_number' => $reservationNumber,
-                'approved_by' => $request->user()->id,
-                'approved_at' => now(),
-            ]);
+        if ($reservation->status !== Reservation::STATUS_PENDING_APPROVAL) {
+            return response()->json(['message' => 'Reservation is not pending approval.'], 422);
         }
+        $request->validate(['notes' => 'nullable|string|max:500']);
+        $reservationNumber = $reservation->reservation_number ?: ('RES-' . strtoupper(Str::random(8)));
+        $reservation->update([
+            'status' => Reservation::STATUS_APPROVED,
+            'reservation_number' => $reservationNumber,
+            'approved_by' => $request->user()->id,
+            'approved_at' => now(),
+        ]);
         ReservationLog::create([
             'reservation_id' => $reservation->id,
             'admin_id' => $request->user()->id,

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreReservationRequest;
+use App\Mail\ReservationPendingApprovalAdminMail;
 use App\Mail\ReservationVerificationMail;
 use App\Models\Reservation;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -70,7 +72,15 @@ class ReservationController extends Controller
             'verification_expires_at' => null,
         ]);
         $reservation->load('space', 'user');
-        // Notify admin (could dispatch job to send email to admins)
+        $admins = User::whereHas('role', function ($q) {
+            $q->where('slug', 'admin');
+        })->get();
+        if ($admins->isNotEmpty()) {
+            foreach ($admins as $admin) {
+                \Illuminate\Support\Facades\Mail::to($admin->email)
+                    ->send(new ReservationPendingApprovalAdminMail($reservation));
+            }
+        }
         return response()->json([
             'message' => 'Reservation confirmed. It is now pending admin approval.',
             'reservation' => $reservation,
