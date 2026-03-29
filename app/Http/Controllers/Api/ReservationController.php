@@ -7,6 +7,7 @@ use App\Http\Requests\Api\StoreReservationRequest;
 use App\Mail\ReservationPendingApprovalAdminMail;
 use App\Mail\ReservationVerificationMail;
 use App\Models\Reservation;
+use App\Models\ReservationLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ class ReservationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = $request->user()->reservations()->with(['space', 'approver'])->latest();
+        $query = $request->user()->reservations()->with(['space', 'approver', 'logs.admin'])->latest();
         $reservations = $query->paginate(20);
         return response()->json($reservations);
     }
@@ -26,7 +27,7 @@ class ReservationController extends Controller
         if ($reservation->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
-        $reservation->load(['space', 'user', 'approver']);
+        $reservation->load(['space', 'user', 'approver', 'logs.admin']);
         return response()->json($reservation);
     }
 
@@ -40,6 +41,12 @@ class ReservationController extends Controller
 
         $reservation = Reservation::create($data);
         $reservation->load('space');
+        ReservationLog::create([
+            'reservation_id' => $reservation->id,
+            'admin_id' => $request->user()->id,
+            'action' => ReservationLog::ACTION_CREATE,
+            'notes' => null,
+        ]);
 
         \Illuminate\Support\Facades\Mail::to($request->user()->email)
             ->send(new ReservationVerificationMail($reservation));

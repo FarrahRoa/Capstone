@@ -18,7 +18,7 @@ class ReservationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Reservation::with(['user', 'space', 'approver'])->latest();
+        $query = Reservation::with(['user', 'space', 'approver', 'logs.admin'])->latest();
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
         }
@@ -53,7 +53,7 @@ class ReservationController extends Controller
         ReservationLog::create([
             'reservation_id' => $reservation->id,
             'admin_id' => $request->user()->id,
-            'action' => 'approve',
+            'action' => ReservationLog::ACTION_APPROVE,
             'notes' => $request->input('notes'),
         ]);
         \Illuminate\Support\Facades\Mail::to($reservation->user->email)
@@ -76,7 +76,7 @@ class ReservationController extends Controller
         ReservationLog::create([
             'reservation_id' => $reservation->id,
             'admin_id' => $request->user()->id,
-            'action' => 'reject',
+            'action' => ReservationLog::ACTION_REJECT,
             'notes' => $request->input('reason'),
         ]);
         \Illuminate\Support\Facades\Mail::to($reservation->user->email)
@@ -96,7 +96,7 @@ class ReservationController extends Controller
         ReservationLog::create([
             'reservation_id' => $reservation->id,
             'admin_id' => $request->user()->id,
-            'action' => 'cancel',
+            'action' => ReservationLog::ACTION_CANCEL,
             'notes' => $request->input('notes'),
         ]);
         \Illuminate\Support\Facades\Mail::to($reservation->user->email)
@@ -123,7 +123,7 @@ class ReservationController extends Controller
         ReservationLog::create([
             'reservation_id' => $reservation->id,
             'admin_id' => $request->user()->id,
-            'action' => 'override',
+            'action' => ReservationLog::ACTION_OVERRIDE,
             'notes' => $request->input('notes'),
         ]);
         \Illuminate\Support\Facades\Mail::to($reservation->user->email)

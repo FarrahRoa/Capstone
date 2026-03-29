@@ -6,6 +6,13 @@
 @source '../**/*.js';
 
 @theme {
+    /* Xavier University – Ateneo de Cagayan institutional palette */
+    --color-xu-primary: #283971;
+    --color-xu-secondary: #3a52a3;
+    --color-xu-gold: #b99430;
+    --color-xu-page: #f4f6fb;
+
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-serif: Georgia, Cambria, 'Times New Roman', Times, serif;
 }

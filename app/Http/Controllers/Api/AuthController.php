@@ -8,20 +8,27 @@ use App\Http\Requests\Api\VerifyOtpRequest;
 use App\Mail\OtpMail;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\RegistrationDisplayName;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
+use Throwable;
 
 class AuthController extends Controller
 {
+    private function authUserPayload(User $user): array
+    {
+        return $user->toApiArray();
+    }
+
     public function login(LoginRequest $request): JsonResponse
     {
         $email = strtolower($request->input('email'));
         if (!User::isAllowedDomain($email)) {
             return response()->json([
-                'message' => 'Invalid email domain. Only @xu.edu.ph and @my.xu.edu.ph are allowed.',
+                'message' => 'Invalid email domain.',
             ], 422);
         }
 
@@ -29,12 +36,18 @@ class AuthController extends Controller
 
         if (!$user) {
             $roleSlug = User::getRoleSlugFromEmail($email);
+            if (!$roleSlug) {
+                return response()->json(['message' => 'Invalid email domain.'], 422);
+            }
+
             $role = Role::where('slug', $roleSlug)->first();
             if (!$role) {
-                return response()->json(['message' => 'Invalid domain or role not configured.'], 422);
+                return response()->json([
+                    'message' => "Role '{$roleSlug}' is not configured. Please contact the administrator.",
+                ], 422);
             }
             $user = User::create([
-                'name' => $request->input('name', explode('@', $email)[0]),
+                'name' => RegistrationDisplayName::fromEmail($email),
                 'email' => $email,
                 'password' => Hash::make($request->input('password')),
                 'role_id' => $role->id,
@@ -52,7 +65,21 @@ class AuthController extends Controller
                 'otp' => $otp,
                 'otp_expires_at' => now()->addMinutes(10),
             ]);
-            Mail::to($user->email)->send(new OtpMail($otp));
+            try {
+                Mail::to($user->email)->send(new OtpMail($otp));
+            } catch (Throwable $e) {
+                Log::error('OTP email send failed on login', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'mailer' => config('mail.default'),
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'message' => 'We could not send the verification email. Check mail configuration or try again shortly. If this continues, contact support.',
+                ], 503);
+            }
 
             return response()->json([
                 'message' => 'OTP sent to your XU email.',
@@ -64,7 +91,7 @@ class AuthController extends Controller
         return response()->json([
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->load('role'),
+            'user' => $this->authUserPayload($user),
         ]);
     }
 
@@ -80,7 +107,7 @@ class AuthController extends Controller
                 'message' => 'Already activated.',
                 'token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user->load('role'),
+                'user' => $this->authUserPayload($user),
             ]);
         }
         if ($user->otp !== $request->input('otp')) {
@@ -99,7 +126,7 @@ class AuthController extends Controller
             'message' => 'Account activated.',
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->load('role'),
+            'user' => $this->authUserPayload($user),
         ]);
     }
 
@@ -115,13 +142,28 @@ class AuthController extends Controller
             'otp' => $otp,
             'otp_expires_at' => now()->addMinutes(10),
         ]);
-        Mail::to($user->email)->send(new OtpMail($otp));
+        try {
+            Mail::to($user->email)->send(new OtpMail($otp));
+        } catch (Throwable $e) {
+            Log::error('OTP email send failed on resend', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'mailer' => config('mail.default'),
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'We could not resend the verification email. Check mail configuration or try again shortly. If this continues, contact support.',
+            ], 503);
+        }
+
         return response()->json(['message' => 'OTP resent to your email.']);
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json($request->user()->load('role'));
+        return response()->json($this->authUserPayload($request->user()));
     }
 
     public function logout(Request $request): JsonResponse

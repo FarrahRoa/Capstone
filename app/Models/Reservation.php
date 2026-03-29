@@ -13,6 +13,13 @@ class Reservation extends Model
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_CANCELLED = 'cancelled';
+    public const STATUS_LABELS = [
+        self::STATUS_EMAIL_VERIFICATION_PENDING => 'Pending verification',
+        self::STATUS_PENDING_APPROVAL => 'Pending approval',
+        self::STATUS_APPROVED => 'Approved',
+        self::STATUS_REJECTED => 'Rejected',
+        self::STATUS_CANCELLED => 'Cancelled',
+    ];
 
     protected $fillable = [
         'user_id', 'space_id', 'start_at', 'end_at', 'status', 'reservation_number',
@@ -64,5 +71,15 @@ class Reservation extends Model
     public function isApproved(): bool
     {
         return $this->status === self::STATUS_APPROVED;
+    }
+
+    public static function statusLabel(string $status): string
+    {
+        return self::STATUS_LABELS[$status] ?? $status;
+    }
+
+    public static function statusLabels(): array
+    {
+        return self::STATUS_LABELS;
     }
 }

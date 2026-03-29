@@ -26,6 +26,17 @@ class Role extends Model
 
     public function canManageReservations(): bool
     {
-        return !$this->isStudentAssistant();
+        return $this->hasPermission('reservation.create');
+    }
+
+    public function getPermissions(): array
+    {
+        $permissions = config('permissions.roles.' . $this->slug, []);
+        return is_array($permissions) ? array_values(array_unique($permissions)) : [];
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        return in_array($permission, $this->getPermissions(), true);
     }
 }

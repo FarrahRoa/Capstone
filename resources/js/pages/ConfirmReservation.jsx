@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import api from '../api';
+import { ui } from '../theme';
 
 export default function ConfirmReservation() {
     const [searchParams] = useSearchParams();
@@ -25,14 +26,21 @@ export default function ConfirmReservation() {
             });
     }, [token]);
 
-    if (success === null && token) return <div className="min-h-screen flex items-center justify-center"><p className="text-slate-600">Confirming...</p></div>;
+    if (success === null && token)
+        return (
+            <div className={ui.pageCenter}>
+                <p className="text-xu-primary font-medium">Confirming…</p>
+            </div>
+        );
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
-            <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8 text-center">
-                <h1 className="text-2xl font-bold text-slate-800 mb-4">Email confirmation</h1>
-                <p className={success ? 'text-green-600' : 'text-red-600'}>{message}</p>
-                <Link to="/" className="inline-block mt-6 text-slate-800 font-medium hover:underline">Back to calendar</Link>
+        <div className={ui.pageCenter}>
+            <div className={`w-full max-w-md p-8 text-center ${ui.card}`}>
+                <h1 className={`${ui.pageTitle} mb-4`}>Email confirmation</h1>
+                <p className={success ? 'text-green-800' : 'text-red-700'}>{message}</p>
+                <Link to="/calendar" className={`inline-block mt-6 ${ui.linkAccent}`}>
+                    Back to calendar
+                </Link>
             </div>
         </div>
     );

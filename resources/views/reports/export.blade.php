@@ -17,6 +17,36 @@
     <h1>Xavier University Library – Reservation Report</h1>
     <p class="meta">Period: {{ $from->format('M j, Y') }} – {{ $to->format('M j, Y') }}</p>
 
+    <h2>Summary</h2>
+    <table>
+        <tbody>
+            <tr><th>Total Reservations</th><td>{{ $data['summary']['total_reservations'] ?? 0 }}</td></tr>
+            <tr><th>Approved Reservations</th><td>{{ $data['summary']['approved_reservations'] ?? 0 }}</td></tr>
+            <tr><th>Average Reservation Duration</th><td>{{ $data['summary']['average_reservation_duration_minutes'] ?? 0 }} min</td></tr>
+            <tr><th>Average Approval Time</th><td>{{ $data['summary']['average_approval_time_minutes'] ?? 0 }} min</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Status Totals</h2>
+    <table>
+        <thead><tr><th>Status</th><th>Count</th></tr></thead>
+        <tbody>
+            @foreach ($data['status_totals'] ?? [] as $row)
+                <tr><td>{{ $row['label'] ?? $row['status'] ?? '' }}</td><td>{{ $row['count'] ?? 0 }}</td></tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    <h2>Action Totals</h2>
+    <table>
+        <thead><tr><th>Action</th><th>Count</th></tr></thead>
+        <tbody>
+            @foreach ($data['action_totals'] ?? [] as $row)
+                <tr><td>{{ $row['label'] ?? $row['action'] ?? '' }}</td><td>{{ $row['count'] ?? 0 }}</td></tr>
+            @endforeach
+        </tbody>
+    </table>
+
     <h2>Reservations by College/Office</h2>
     <table>
         <thead><tr><th>College/Office</th><th>Count</th></tr></thead>
@@ -69,5 +99,41 @@
 
     <p><strong>Average reservation duration:</strong> {{ $data['average_reservation_duration_minutes'] ?? 0 }} minutes</p>
     <p><strong>Average approval time:</strong> {{ $data['average_approval_time_minutes'] ?? 0 }} minutes</p>
+
+    <h2>Reservation Details</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Requester</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Space</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Approved</th>
+                <th>Rejection Reason</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach ($data['reservation_rows'] ?? [] as $row)
+                <tr>
+                    <td>{{ $row['reservation_number'] ?? $row['reservation_id'] ?? '' }}</td>
+                    <td>{{ $row['requester_name'] ?? '' }}</td>
+                    <td>{{ $row['requester_email'] ?? '' }}</td>
+                    <td>{{ $row['requester_role'] ?? '' }}</td>
+                    <td>{{ $row['space_name'] ?? '' }}</td>
+                    <td>{{ $row['start_at'] ?? '' }}</td>
+                    <td>{{ $row['end_at'] ?? '' }}</td>
+                    <td>{{ $row['status_label'] ?? $row['status'] ?? '' }}</td>
+                    <td>{{ $row['created_at'] ?? '' }}</td>
+                    <td>{{ $row['approved_at'] ?? '' }}</td>
+                    <td>{{ $row['rejected_reason'] ?? '' }}</td>
+                </tr>
+            @endforeach
+        </tbody>
+    </table>
 </body>
 </html>

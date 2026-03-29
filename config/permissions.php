@@ -1,0 +1,62 @@
+<?php
+
+return [
+    'roles' => [
+        'student' => [
+            'calendar.view',
+            'spaces.view_active',
+            'reservation.create',
+            'reservation.view_own',
+            'reservation.cancel_own',
+        ],
+        'faculty' => [
+            'calendar.view',
+            'spaces.view_active',
+            'reservation.create',
+            'reservation.view_own',
+            'reservation.cancel_own',
+        ],
+        'staff' => [
+            'calendar.view',
+            'spaces.view_active',
+            'reservation.create',
+            'reservation.view_own',
+            'reservation.cancel_own',
+        ],
+        'student_assistant' => [
+            'calendar.view',
+            'spaces.view_active',
+            'reservation.view_all',
+            'reservation.approve',
+            'reservation.reject',
+        ],
+        'librarian' => [
+            'calendar.view',
+            'spaces.view_active',
+            'reservation.view_all',
+            'reservation.approve',
+            'reservation.reject',
+            'reports.view',
+            'spaces.manage',
+            'booking_history.view_all',
+        ],
+        'admin' => [
+            'calendar.view',
+            'spaces.view_active',
+            'reservation.create',
+            'reservation.view_own',
+            'reservation.cancel_own',
+            'reservation.view_all',
+            'reservation.approve',
+            'reservation.reject',
+            'reservation.override',
+            'reports.view',
+            'reports.export',
+            'spaces.manage',
+            'users.manage',
+            'roles.manage',
+            'policies.manage',
+            'booking_history.view_all',
+        ],
+    ],
+];
