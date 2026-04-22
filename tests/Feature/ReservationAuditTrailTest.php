@@ -57,8 +57,9 @@ class ReservationAuditTrailTest extends TestCase
         ]);
         ReservationLog::create([
             'reservation_id' => $reservation->id,
-            'admin_id' => $requester->id,
-            'action' => 'create',
+            'actor_user_id' => $requester->id,
+            'actor_type' => ReservationLog::ACTOR_USER,
+            'action' => ReservationLog::ACTION_CREATE,
         ]);
 
         return $reservation;
@@ -80,12 +81,13 @@ class ReservationAuditTrailTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        $reservationId = $response->json('reservation.id');
+        $reservationId = $response->json('data.id');
 
         $this->assertDatabaseHas('reservation_logs', [
             'reservation_id' => $reservationId,
-            'admin_id' => $student->id,
-            'action' => 'create',
+            'actor_user_id' => $student->id,
+            'actor_type' => ReservationLog::ACTOR_USER,
+            'action' => ReservationLog::ACTION_CREATE,
         ]);
         Mail::assertSent(ReservationVerificationMail::class);
     }
@@ -106,8 +108,9 @@ class ReservationAuditTrailTest extends TestCase
         $response->assertStatus(200);
         $this->assertDatabaseHas('reservation_logs', [
             'reservation_id' => $reservation->id,
-            'admin_id' => $operator->id,
-            'action' => 'approve',
+            'actor_user_id' => $operator->id,
+            'actor_type' => ReservationLog::ACTOR_ADMIN,
+            'action' => ReservationLog::ACTION_APPROVE,
             'notes' => 'Approved for use',
         ]);
         Mail::assertSent(ReservationApprovedMail::class);
@@ -129,8 +132,9 @@ class ReservationAuditTrailTest extends TestCase
         $response->assertStatus(200);
         $this->assertDatabaseHas('reservation_logs', [
             'reservation_id' => $reservation->id,
-            'admin_id' => $operator->id,
-            'action' => 'reject',
+            'actor_user_id' => $operator->id,
+            'actor_type' => ReservationLog::ACTOR_ADMIN,
+            'action' => ReservationLog::ACTION_REJECT,
             'notes' => 'Room unavailable for maintenance.',
         ]);
         Mail::assertSent(ReservationRejectedMail::class);
@@ -160,14 +164,16 @@ class ReservationAuditTrailTest extends TestCase
 
         $this->assertDatabaseHas('reservation_logs', [
             'reservation_id' => $overrideReservation->id,
-            'admin_id' => $admin->id,
-            'action' => 'override',
+            'actor_user_id' => $admin->id,
+            'actor_type' => ReservationLog::ACTOR_ADMIN,
+            'action' => ReservationLog::ACTION_OVERRIDE,
             'notes' => 'Manual override approved',
         ]);
         $this->assertDatabaseHas('reservation_logs', [
             'reservation_id' => $cancelReservation->id,
-            'admin_id' => $admin->id,
-            'action' => 'cancel',
+            'actor_user_id' => $admin->id,
+            'actor_type' => ReservationLog::ACTOR_ADMIN,
+            'action' => ReservationLog::ACTION_CANCEL,
             'notes' => 'Cancelled by admin for conflict',
         ]);
     }
@@ -182,7 +188,9 @@ class ReservationAuditTrailTest extends TestCase
         Sanctum::actingAs($owner);
         $ownerResponse = $this->getJson("/api/reservations/{$reservation->id}");
         $ownerResponse->assertStatus(200);
-        $ownerResponse->assertJsonPath('logs.0.action', 'create');
+        $ownerResponse->assertJsonPath('data.logs.0.action', ReservationLog::ACTION_CREATE);
+        $ownerResponse->assertJsonPath('data.logs.0.actor_type', ReservationLog::ACTOR_USER);
+        $ownerResponse->assertJsonPath('data.logs.0.actor_user_id', $owner->id);
 
         Sanctum::actingAs($other);
         $otherResponse = $this->getJson("/api/reservations/{$reservation->id}");
@@ -199,6 +207,8 @@ class ReservationAuditTrailTest extends TestCase
         $response = $this->getJson("/api/admin/reservations/{$reservation->id}");
 
         $response->assertStatus(200);
-        $response->assertJsonPath('logs.0.action', 'create');
+        $response->assertJsonPath('data.logs.0.action', ReservationLog::ACTION_CREATE);
+        $response->assertJsonPath('data.logs.0.actor_type', ReservationLog::ACTOR_USER);
+        $response->assertJsonPath('data.logs.0.actor_user_id', $owner->id);
     }
 }

@@ -21,6 +21,7 @@ This script (defined in `composer.json`) performs:
 - Copy `.env.example` → `.env` if `.env` does not exist
 - `php artisan key:generate`
 - `php artisan migrate --force`
+- `php artisan db:seed --force` (roles, spaces, policy doc, demo users — **required** or the room list and admin Spaces table stay empty)
 - `npm install`
 - `npm run build`
 
@@ -33,6 +34,7 @@ composer install
 copy .env.example .env
 php artisan key:generate
 php artisan migrate --force
+php artisan db:seed --force
 npm install
 npm run build
 ```
@@ -100,8 +102,8 @@ The repository provides `.env.example` with the following variables:
 
 Additional env vars used in code/config but **not present** in `.env.example`:
 
-- **`config('app.frontend_url')`**: referenced by `resources/views/emails/reservation-verify.blade.php` to build the confirm URL. The corresponding env var is **not found in code** (likely `FRONTEND_URL`, but **not found in code**).
-  - **Found in code**: `config/app.php` defines `'frontend_url' => env('FRONTEND_URL', env('APP_URL'))`, so the env var name is **`FRONTEND_URL`**. It is **not present** in `.env.example`.
+- **`config('app.frontend_url')`**: referenced by `resources/views/emails/reservation-verify.blade.php` to build the confirm URL.
+  - **Env var**: `FRONTEND_URL` (now present in `.env.example`). Set it when the SPA is deployed on a different origin than the API.
 
 ## Database migration / seed steps
 

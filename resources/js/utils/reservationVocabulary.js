@@ -23,6 +23,7 @@ export const reservationStatusMeta = {
 
 export const reservationActionLabels = {
     create: 'Created',
+    update: 'Edited',
     approve: 'Approved',
     reject: 'Rejected',
     cancel: 'Cancelled',

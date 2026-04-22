@@ -6,36 +6,62 @@ use App\Http\Controllers\Controller;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Space;
+use App\Models\User;
+use App\Support\ApiResponse;
+use App\Support\ReportPdfPresenter;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
+    /**
+     * Trimmed college/office from profile completion; only "Not specified" when truly empty.
+     */
+    private function requesterAffiliationLabel(?User $user): string
+    {
+        if (!$user) {
+            return 'Not specified';
+        }
+        $unit = trim((string) ($user->college_office ?? ''));
+
+        return $unit !== '' ? $unit : 'Not specified';
+    }
+
+    /**
+     * Effective user_type for reporting (saved profile, else inferred from email domain).
+     */
+    private function effectiveUserType(?User $user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+
+        return $user->user_type ?: User::getUserTypeFromEmail((string) $user->email);
+    }
+
     public function index(Request $request): JsonResponse
     {
         [$from, $to, $payload] = $this->buildReportPayload($request);
-        return response()->json($payload);
+
+        return ApiResponse::data($payload);
     }
 
     public function export(Request $request)
     {
         [$from, $to, $json] = $this->buildReportPayload($request, true);
 
-        if ($request->input('format') === 'json') {
-            return response()->json($json);
-        }
-
         if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.export', [
                 'data' => $json,
                 'from' => $from,
                 'to' => $to,
+                'charts' => ReportPdfPresenter::compile($json),
             ]);
             return $pdf->download('library-report-' . $from->format('Y-m-d') . '-to-' . $to->format('Y-m-d') . '.pdf');
         }
 
-        return response()->json($json);
+        return ApiResponse::data($json);
     }
 
     private function resolveFrom(Request $request): Carbon
@@ -68,7 +94,7 @@ class ReportController extends Controller
             'period' => 'in:monthly,quarterly,annual,custom',
             'from' => 'required_if:period,custom|nullable|date',
             'to' => 'required_if:period,custom|nullable|date|after_or_equal:from',
-            'format' => 'in:pdf,json',
+            'format' => 'nullable|in:pdf',
         ]);
 
         $from = $this->resolveFrom($request);
@@ -83,12 +109,15 @@ class ReportController extends Controller
             fn ($label, $status) => ['status' => $status, 'label' => $label, 'count' => $reservations->where('status', $status)->count()]
         )->values();
 
-        $byCollegeOffice = $reservations->groupBy(fn ($r) => $r->user->college_office ?? 'Not specified')
+        $byCollegeOffice = $reservations->groupBy(fn ($r) => $this->requesterAffiliationLabel($r->user))
             ->map->count()
             ->sortDesc();
 
-        $students = $reservations->filter(fn ($r) => $r->user->role && $r->user->role->slug === 'student');
-        $byStudentCollege = $students->groupBy(fn ($r) => $r->user->college_office ?? 'Not specified')->map->count()->sortDesc();
+        $students = $reservations->filter(fn ($r) => $this->effectiveUserType($r->user) === User::USER_TYPE_STUDENT);
+        $byStudentCollege = $students->groupBy(fn ($r) => $this->requesterAffiliationLabel($r->user))->map->count()->sortDesc();
+
+        $facultyStaff = $reservations->filter(fn ($r) => $this->effectiveUserType($r->user) === User::USER_TYPE_FACULTY_STAFF);
+        $byFacultyOffice = $facultyStaff->groupBy(fn ($r) => $this->requesterAffiliationLabel($r->user))->map->count()->sortDesc();
         $byYearLevel = $students->groupBy(fn ($r) => $r->user->year_level ?? 'Not specified')->map->count()->sortDesc();
 
         $spacesById = Space::whereIn('id', $approved->pluck('space_id')->filter()->unique()->values())->get()->keyBy('id');
@@ -113,7 +142,7 @@ class ReportController extends Controller
         $avgApprovalMinutes = $approvalTimes->isEmpty() ? 0 : round($approvalTimes->avg(), 1);
 
         $logs = ReservationLog::whereBetween('created_at', [$from, $to])
-            ->with(['reservation.user.role', 'reservation.space', 'admin'])
+            ->with(['reservation.user.role', 'reservation.space', 'actor'])
             ->latest()
             ->get();
 
@@ -127,11 +156,16 @@ class ReportController extends Controller
                 'reservation_id' => $log->reservation_id,
                 'action' => $log->action,
                 'action_label' => ReservationLog::actionLabel($log->action),
-                'actor_name' => $log->admin?->name,
-                'actor_email' => $log->admin?->email,
+                'actor_name' => $log->actor?->name,
+                'actor_email' => $log->actor?->email,
+                'actor_user_type' => $log->actor?->user_type ?? (\App\Models\User::getUserTypeFromEmail((string) $log->actor?->email)),
+                'actor_college_office' => $log->actor?->college_office,
                 'requester_name' => $log->reservation?->user?->name,
                 'requester_email' => $log->reservation?->user?->email,
                 'requester_role' => $log->reservation?->user?->role?->name,
+                'requester_user_type' => $log->reservation?->user?->user_type ?? (User::getUserTypeFromEmail((string) $log->reservation?->user?->email)),
+                'requester_college_office' => $log->reservation?->user?->college_office,
+                'requester_affiliation' => $this->requesterAffiliationLabel($log->reservation?->user),
                 'space_name' => $log->reservation?->space?->name,
                 'notes' => $log->notes,
                 'created_at' => optional($log->created_at)->toDateTimeString(),
@@ -145,6 +179,9 @@ class ReportController extends Controller
                 'requester_name' => $reservation->user?->name,
                 'requester_email' => $reservation->user?->email,
                 'requester_role' => $reservation->user?->role?->name,
+                'requester_user_type' => $reservation->user?->user_type ?? (User::getUserTypeFromEmail((string) $reservation->user?->email)),
+                'requester_college_office' => $reservation->user?->college_office,
+                'requester_affiliation' => $this->requesterAffiliationLabel($reservation->user),
                 'space_name' => $reservation->space?->name,
                 'start_at' => optional($reservation->start_at)->toDateTimeString(),
                 'end_at' => optional($reservation->end_at)->toDateTimeString(),
@@ -168,13 +205,14 @@ class ReportController extends Controller
             ],
             'status_totals' => $statusTotals,
             'action_totals' => $actionTotals,
-            'recent_activity' => $recentActivity,
-            'reservation_rows' => $reservationRows,
-            'reservations_by_college_office' => $byCollegeOffice,
-            'student_college' => $byStudentCollege,
-            'student_year_level' => $byYearLevel,
-            'room_utilization' => $bySpace,
-            'peak_hours' => $byHour,
+            'recent_activity' => $recentActivity->all(),
+            'reservation_rows' => $reservationRows->values()->all(),
+            'reservations_by_college_office' => $byCollegeOffice->all(),
+            'student_college' => $byStudentCollege->all(),
+            'faculty_staff_office' => $byFacultyOffice->all(),
+            'student_year_level' => $byYearLevel->all(),
+            'room_utilization' => $bySpace->values()->all(),
+            'peak_hours' => $byHour->all(),
             'average_reservation_duration_minutes' => $avgDurationMinutes,
             'average_approval_time_minutes' => $avgApprovalMinutes,
         ];

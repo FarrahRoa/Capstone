@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import api from '../../api';
+import { paginatorRows, unwrapData } from '../../utils/apiEnvelope';
 import { useAuth } from '../../contexts/AuthContext';
 import { getReservationActionLabel, getReservationStatusBadgeClass, getReservationStatusLabel } from '../../utils/reservationVocabulary';
+import { formatLogTime, formatReservationRange } from '../../utils/timeDisplay';
 import { ui } from '../../theme';
 
 export default function AdminReservations() {
@@ -12,12 +14,14 @@ export default function AdminReservations() {
     const [rejectReason, setRejectReason] = useState('');
     const [actionId, setActionId] = useState(null);
     const [feedback, setFeedback] = useState(null);
+    const [confabPick, setConfabPick] = useState({});
+    const [assignOptions, setAssignOptions] = useState({});
 
     const load = () => {
         setLoading(true);
         const params = statusFilter ? { status: statusFilter } : {};
         api.get('/admin/reservations', { params })
-            .then(({ data }) => setReservations(data.data || data))
+            .then(({ data }) => setReservations(paginatorRows(data)))
             .catch(() => {
                 setReservations([]);
                 setFeedback({ type: 'error', text: 'Failed to load reservation queue.' });
@@ -33,19 +37,53 @@ export default function AdminReservations() {
 
     const clearFeedback = () => setFeedback(null);
 
-    const approve = (id) => {
+    const loadAssignOptions = async (id) => {
+        if (Object.prototype.hasOwnProperty.call(assignOptions, id)) return;
+        setAssignOptions((o) => ({ ...o, [id]: null }));
+        try {
+            const { data: body } = await api.get(`/admin/reservations/${id}/assignable-confab-spaces`);
+            const list = unwrapData(body);
+            setAssignOptions((o) => ({ ...o, [id]: Array.isArray(list) ? list : [] }));
+        } catch {
+            setAssignOptions((o) => ({ ...o, [id]: [] }));
+        }
+    };
+
+    const needsConfabAssign = (r) => r.status === 'pending_approval' && r.space?.is_confab_pool;
+
+    const approve = (r) => {
         if (!canApprove) return;
         clearFeedback();
+        const id = r.id;
+        if (needsConfabAssign(r)) {
+            const sid = Number(confabPick[id]);
+            if (!sid) {
+                setFeedback({ type: 'error', text: 'Choose a specific confab room before approving.' });
+                return;
+            }
+        }
         setActionId(id);
-        api.post(`/admin/reservations/${id}/approve`)
+        const payload = {};
+        if (needsConfabAssign(r)) {
+            payload.assigned_space_id = Number(confabPick[id]);
+        }
+        api.post(`/admin/reservations/${id}/approve`, payload)
             .then(({ data }) => {
                 setActionId(null);
+                setConfabPick((p) => {
+                    const next = { ...p };
+                    delete next[id];
+                    return next;
+                });
                 setFeedback({ type: 'success', text: data?.message || 'Reservation approved.' });
                 load();
             })
             .catch((err) => {
                 setActionId(null);
-                setFeedback({ type: 'error', text: err.response?.data?.message || 'Failed to approve reservation.' });
+                const msg = err.response?.data?.errors?.assigned_space_id?.[0]
+                    || err.response?.data?.message
+                    || 'Failed to approve reservation.';
+                setFeedback({ type: 'error', text: msg });
             });
     };
 
@@ -92,6 +130,42 @@ export default function AdminReservations() {
             });
     };
 
+    const overrideApprove = (r) => {
+        if (!canOverride) return;
+        clearFeedback();
+        const id = r.id;
+        if (needsConfabAssign(r)) {
+            const sid = Number(confabPick[id]);
+            if (!sid) {
+                setFeedback({ type: 'error', text: 'Choose a specific confab room before approving.' });
+                return;
+            }
+        }
+        setActionId(id);
+        const payload = {};
+        if (needsConfabAssign(r)) {
+            payload.assigned_space_id = Number(confabPick[id]);
+        }
+        api.post(`/admin/reservations/${id}/override`, payload)
+            .then(({ data }) => {
+                setActionId(null);
+                setConfabPick((p) => {
+                    const next = { ...p };
+                    delete next[id];
+                    return next;
+                });
+                setFeedback({ type: 'success', text: data?.message || 'Override applied.' });
+                load();
+            })
+            .catch((err) => {
+                setActionId(null);
+                const msg = err.response?.data?.errors?.assigned_space_id?.[0]
+                    || err.response?.data?.message
+                    || 'Failed to apply override.';
+                setFeedback({ type: 'error', text: msg });
+            });
+    };
+
     return (
         <div>
             <h1 className={`${ui.pageTitle} mb-4`}>Reservation queue</h1>
@@ -116,16 +190,51 @@ export default function AdminReservations() {
                 {(reservations.length === 0 && !loading) && <p className="text-slate-600">No reservations.</p>}
                 {reservations.map((r) => (
                     <div key={r.id} className={`p-4 ${ui.cardFlat}`}>
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="font-medium text-xu-primary">{r.space?.name} – {r.user?.name} ({r.user?.email})</p>
-                                <p className="text-sm text-slate-600">{new Date(r.start_at).toLocaleString()} – {new Date(r.end_at).toLocaleTimeString()}</p>
+                        <div className="flex justify-between items-start gap-4">
+                            <div className="min-w-0 flex-1">
+                                <p className="font-medium text-xu-primary">
+                                    {r.space?.name} – {r.user?.name} ({r.user?.email})
+                                </p>
+                                {r.user?.mobile_number && (
+                                    <p className="text-xs text-slate-600 mt-0.5">
+                                        Mobile: <span className="font-medium text-slate-700">{r.user.mobile_number}</span>
+                                    </p>
+                                )}
+                                <p className="text-sm text-slate-600">{formatReservationRange(r.start_at, r.end_at)}</p>
                                 <p className="text-sm text-slate-500">
                                     <span className={`inline-flex items-center rounded px-2 py-0.5 mr-2 text-xs font-medium ${getReservationStatusBadgeClass(r.status)}`}>
                                         {getReservationStatusLabel(r.status)}
                                     </span>
                                     {r.reservation_number && `• ${r.reservation_number}`}
                                 </p>
+                                {(r.space?.slug === 'avr'
+                                    || r.space?.slug === 'lobby'
+                                    || r.space?.type === 'confab'
+                                    || r.space?.type === 'medical_confab'
+                                    || r.space?.type === 'lecture') && (
+                                    <div className="mt-2 text-sm text-slate-700 space-y-1 max-w-2xl">
+                                        {r.event_title && (
+                                            <p>
+                                                <span className="font-semibold text-slate-800">Event:</span> {r.event_title}
+                                            </p>
+                                        )}
+                                        {r.participant_count != null && (
+                                            <p>
+                                                <span className="font-semibold text-slate-800">Participants:</span> {r.participant_count}
+                                            </p>
+                                        )}
+                                        {r.event_description && (
+                                            <p className="text-slate-600 whitespace-pre-wrap">
+                                                <span className="font-semibold text-slate-800">Notes:</span> {r.event_description}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                                {needsConfabAssign(r) && (
+                                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mt-2 max-w-xl">
+                                        General confab request: assign a specific free confab room before approving.
+                                    </p>
+                                )}
                                 {r.status === 'email_verification_pending' && (
                                     <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
                                         Awaiting requester email confirmation. <strong>Approve</strong> is available after they verify; <strong>Reject</strong> can decline before then.
@@ -142,9 +251,9 @@ export default function AdminReservations() {
                                                 <li key={log.id} className="text-xs text-slate-600">
                                                     <span className="font-medium text-slate-700">{getReservationActionLabel(log.action)}</span>
                                                     {' • '}
-                                                    {new Date(log.created_at).toLocaleString()}
+                                                    {formatLogTime(log.created_at)}
                                                     {' • '}
-                                                    {log.admin?.name || 'System'}
+                                                    {log.actor?.name || log.admin?.name || 'System'}
                                                     {log.notes ? ` • ${log.notes}` : ''}
                                                 </li>
                                             ))}
@@ -152,33 +261,70 @@ export default function AdminReservations() {
                                     </div>
                                 )}
                             </div>
-                            <div className="flex gap-2 flex-wrap">
-                                {r.status === 'pending_approval' && canApprove && (
-                                    <button
-                                        onClick={() => approve(r.id)}
-                                        disabled={actionId === r.id}
-                                        className="px-3 py-1.5 rounded-md bg-xu-primary text-white text-sm font-medium shadow-sm hover:bg-xu-secondary disabled:opacity-50 transition-colors"
-                                    >
-                                        Approve
-                                    </button>
-                                )}
-                                {(r.status === 'pending_approval' || r.status === 'email_verification_pending') && canReject && (
-                                    <button
-                                        onClick={() => openReject(r.id)}
-                                        disabled={actionId !== null && actionId !== r.id}
-                                        className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-                                    >
-                                        Reject
-                                    </button>
-                                )}
-                                {canOverride && !['cancelled', 'rejected'].includes(r.status) && (
-                                    <button
-                                        onClick={() => cancel(r.id)}
-                                        disabled={actionId === r.id}
-                                        className="px-3 py-1.5 rounded-md border border-xu-secondary text-xu-secondary bg-white text-sm font-medium hover:bg-xu-page disabled:opacity-50 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
+                            <div className="flex flex-col gap-2 items-end shrink-0">
+                                <div className="flex gap-2 flex-wrap justify-end">
+                                    {r.status === 'pending_approval' && canApprove && (
+                                        <button
+                                            type="button"
+                                            onClick={() => approve(r)}
+                                            disabled={actionId === r.id || (needsConfabAssign(r) && !confabPick[r.id])}
+                                            className="px-3 py-1.5 rounded-md bg-xu-primary text-white text-sm font-medium shadow-sm hover:bg-xu-secondary disabled:opacity-50 transition-colors"
+                                        >
+                                            Approve
+                                        </button>
+                                    )}
+                                    {(r.status === 'pending_approval' || r.status === 'email_verification_pending') && canReject && (
+                                        <button
+                                            type="button"
+                                            onClick={() => openReject(r.id)}
+                                            disabled={actionId !== null && actionId !== r.id}
+                                            className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                                        >
+                                            Reject
+                                        </button>
+                                    )}
+                                    {r.status === 'pending_approval' && canOverride && (
+                                        <button
+                                            type="button"
+                                            onClick={() => overrideApprove(r)}
+                                            disabled={actionId === r.id || (needsConfabAssign(r) && !confabPick[r.id])}
+                                            className="px-3 py-1.5 rounded-md border border-xu-secondary text-xu-secondary bg-white text-sm font-medium hover:bg-xu-page disabled:opacity-50 transition-colors"
+                                        >
+                                            Override approve
+                                        </button>
+                                    )}
+                                    {canOverride && !['cancelled', 'rejected'].includes(r.status) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => cancel(r.id)}
+                                            disabled={actionId === r.id}
+                                            className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 bg-white text-sm font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
+                                </div>
+                                {needsConfabAssign(r) && (canApprove || canOverride) && (
+                                    <div className="flex flex-wrap items-center gap-2 justify-end max-w-xs">
+                                        <label className="text-xs font-medium text-slate-600 whitespace-nowrap">Confab room</label>
+                                        <select
+                                            value={confabPick[r.id] || ''}
+                                            onFocus={() => loadAssignOptions(r.id)}
+                                            onChange={(e) => setConfabPick((p) => ({ ...p, [r.id]: e.target.value }))}
+                                            className={`${ui.select} text-sm min-w-[10rem]`}
+                                        >
+                                            <option value="">Select…</option>
+                                            {Array.isArray(assignOptions[r.id]) && assignOptions[r.id].map((s) => (
+                                                <option key={s.id} value={s.id}>{s.name}</option>
+                                            ))}
+                                        </select>
+                                        {assignOptions[r.id] === null && (
+                                            <span className="text-xs text-slate-500">Loading rooms…</span>
+                                        )}
+                                        {Array.isArray(assignOptions[r.id]) && assignOptions[r.id].length === 0 && (
+                                            <span className="text-xs text-red-600">No free confab rooms for this slot.</span>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -192,12 +338,14 @@ export default function AdminReservations() {
                                     placeholder="Rejection reason"
                                 />
                                 <button
+                                    type="button"
                                     onClick={() => reject(r.id)}
                                     className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700"
                                 >
                                     Confirm reject
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={() => {
                                         setActionId(null);
                                         setRejectReason('');

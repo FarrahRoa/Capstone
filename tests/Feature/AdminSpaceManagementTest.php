@@ -44,8 +44,8 @@ class AdminSpaceManagementTest extends TestCase
     private function makeSpace(array $overrides = []): Space
     {
         return Space::create(array_merge([
-            'name' => 'AVR',
-            'slug' => 'avr',
+            'name' => 'Room A',
+            'slug' => 'room-a',
             'type' => 'avr',
             'capacity' => 10,
             'is_active' => true,
@@ -63,8 +63,8 @@ class AdminSpaceManagementTest extends TestCase
         $response = $this->getJson('/api/admin/spaces');
 
         $response->assertStatus(200);
-        $response->assertJsonCount(2);
-        $names = array_column($response->json(), 'name');
+        $response->assertJsonCount(2, 'data');
+        $names = array_column($response->json('data'), 'name');
         $this->assertContains('Boardroom', $names);
         $this->assertContains('Lobby', $names);
     }
@@ -79,13 +79,13 @@ class AdminSpaceManagementTest extends TestCase
 
         $searchResponse = $this->getJson('/api/admin/spaces?search=Beta');
         $searchResponse->assertStatus(200);
-        $searchResponse->assertJsonCount(1);
-        $this->assertSame('Beta Board', $searchResponse->json('0.name'));
+        $searchResponse->assertJsonCount(1, 'data');
+        $this->assertSame('Beta Board', $searchResponse->json('data.0.name'));
 
         $typeResponse = $this->getJson('/api/admin/spaces?type=boardroom');
         $typeResponse->assertStatus(200);
-        $typeResponse->assertJsonCount(1);
-        $this->assertSame('boardroom', $typeResponse->json('0.type'));
+        $typeResponse->assertJsonCount(1, 'data');
+        $this->assertSame('boardroom', $typeResponse->json('data.0.type'));
     }
 
     public function test_invalid_type_filter_is_rejected(): void

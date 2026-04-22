@@ -3,6 +3,14 @@
         Options -MultiViews -Indexes
     </IfModule>
 
+    <IfModule mod_headers.c>
+        # Cache Vite-built hashed assets aggressively (improves repeat views + Lighthouse cache policy).
+        # Laravel Vite outputs versioned files under /build/assets (e.g. app-<hash>.js).
+        <FilesMatch "\.(?:js|css|woff2?|ttf|eot|svg|png|jpe?g|gif|webp)$">
+            Header set Cache-Control "public, max-age=31536000, immutable"
+        </FilesMatch>
+    </IfModule>
+
     RewriteEngine On
 
     # Handle Authorization Header

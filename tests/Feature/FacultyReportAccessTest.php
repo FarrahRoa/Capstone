@@ -31,8 +31,8 @@ class FacultyReportAccessTest extends TestCase
     {
         $student = $this->makeUserWithRole('student', 'Student');
         $space = Space::create([
-            'name' => 'AVR',
-            'slug' => 'avr',
+            'name' => 'Room A',
+            'slug' => 'room-a',
             'type' => 'avr',
             'capacity' => 10,
             'is_active' => true,
@@ -58,19 +58,22 @@ class FacultyReportAccessTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
-            'period',
-            'summary',
-            'status_totals',
-            'action_totals',
-            'recent_activity',
-            'reservation_rows',
-            'reservations_by_college_office',
-            'student_college',
-            'student_year_level',
-            'room_utilization',
-            'peak_hours',
-            'average_reservation_duration_minutes',
-            'average_approval_time_minutes',
+            'data' => [
+                'period',
+                'summary',
+                'status_totals',
+                'action_totals',
+                'recent_activity',
+                'reservation_rows',
+                'reservations_by_college_office',
+                'student_college',
+                'faculty_staff_office',
+                'student_year_level',
+                'room_utilization',
+                'peak_hours',
+                'average_reservation_duration_minutes',
+                'average_approval_time_minutes',
+            ],
         ]);
     }
 

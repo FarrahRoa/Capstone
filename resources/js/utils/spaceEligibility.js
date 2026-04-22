@@ -7,7 +7,7 @@ export function getSpaceRestrictionLabel(space) {
         return 'Restricted: eligible med users only';
     }
     if (space.type === SPACE_TYPE_BOARDROOM) {
-        return 'Restricted: authorized Office of the President users only';
+        return 'Restricted: Office of the President & OVP Higher Education only';
     }
     return '';
 }
@@ -18,7 +18,7 @@ export function getSpaceIneligibilityMessage(space) {
         return 'Only eligible med users can reserve Med Confab.';
     }
     if (space.type === SPACE_TYPE_BOARDROOM) {
-        return 'Only authorized Office of the President users can reserve Boardroom.';
+        return 'Only authorized Office of the President and Office of the Vice-President Higher Education users can reserve Boardroom.';
     }
     return '';
 }
@@ -29,7 +29,13 @@ export function isUserEligibleForSpace(user, space) {
         return Boolean(user?.med_confab_eligible);
     }
     if (space.type === SPACE_TYPE_BOARDROOM) {
-        return Boolean(user?.boardroom_eligible);
+        const office = String(user?.college_office || '').trim();
+        return office === 'Office of the President' || office === 'Office of the Vice-President Higher Education';
     }
     return true;
+}
+
+/** Matches {@link BookingCalendar} slot grid: all library spaces use :00 / :30 boundaries. */
+export function spaceUsesHalfHourSlots(space) {
+    return Boolean(space);
 }

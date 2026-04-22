@@ -4,7 +4,12 @@
     "type": "module",
     "scripts": {
         "build": "vite build && node scripts/clear-vite-hot.mjs",
-        "dev": "vite"
+        "dev": "vite",
+        "test:manila-clock": "node tests/js/manilaTimeWallClock.test.mjs",
+        "test:reservation-times": "node tests/js/reservationBookingTimes.test.mjs",
+        "test:half-hour-input": "node tests/js/halfHourWallClockInput.test.mjs",
+        "test:space-colors": "node tests/js/spaceColors.test.mjs",
+        "test:space-guidelines-display": "node tests/js/spaceGuidelineDisplay.test.mjs"
     },
     "dependencies": {
         "axios": "^1.11.0",

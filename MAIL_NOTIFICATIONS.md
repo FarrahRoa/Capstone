@@ -64,6 +64,7 @@ The config key is defined in `config/app.php` as:
 - `frontend_url` → `env('FRONTEND_URL', env('APP_URL'))`
 
 `FRONTEND_URL` is **not present** in `.env.example`.
+It is now included; set it to the SPA base URL when the frontend is deployed on a different origin than the API.
 
 ## `App\Mail\ReservationApprovedMail`
 

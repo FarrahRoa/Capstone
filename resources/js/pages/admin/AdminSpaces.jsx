@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../api';
+import { unwrapData } from '../../utils/apiEnvelope';
 import { getSpaceRestrictionLabel } from '../../utils/spaceEligibility';
 import { ui } from '../../theme';
 
@@ -9,6 +10,7 @@ const TYPE_OPTIONS = [
     { value: 'boardroom', label: 'Boardroom' },
     { value: 'medical_confab', label: 'Medical Confab' },
     { value: 'confab', label: 'Confab' },
+    { value: 'lecture', label: 'Lecture Space' },
 ];
 
 function typeLabel(value) {
@@ -43,7 +45,10 @@ export default function AdminSpaces() {
         if (search.trim()) params.search = search.trim();
         if (typeFilter) params.type = typeFilter;
         api.get('/admin/spaces', { params })
-            .then(({ data }) => setSpaces(Array.isArray(data) ? data : []))
+            .then(({ data }) => {
+                const list = unwrapData(data);
+                setSpaces(Array.isArray(list) ? list : []);
+            })
             .catch((err) => {
                 setSpaces([]);
                 setBanner({ type: 'error', text: err.response?.data?.message || 'Failed to load spaces.' });
@@ -133,7 +138,8 @@ export default function AdminSpaces() {
                 payload.capacity = Number(editDraft.capacity);
             }
             const { data } = await api.put(`/admin/spaces/${spaceId}`, payload);
-            setSpaces((prev) => prev.map((s) => (s.id === spaceId ? data : s)));
+            const updated = unwrapData(data);
+            setSpaces((prev) => prev.map((s) => (s.id === spaceId ? updated : s)));
             setBanner({ type: 'success', text: 'Space updated.' });
             cancelEdit();
         } catch (err) {
@@ -155,7 +161,8 @@ export default function AdminSpaces() {
             const { data } = await api.post(`/admin/spaces/${space.id}/toggle-active`, {
                 is_active: next,
             });
-            setSpaces((prev) => prev.map((s) => (s.id === space.id ? data : s)));
+            const updated = unwrapData(data);
+            setSpaces((prev) => prev.map((s) => (s.id === space.id ? updated : s)));
             setBanner({
                 type: 'success',
                 text: next ? 'Space activated.' : 'Space deactivated.',

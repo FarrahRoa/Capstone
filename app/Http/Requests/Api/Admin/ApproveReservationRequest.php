@@ -15,6 +15,7 @@ class ApproveReservationRequest extends FormRequest
     {
         return [
             'notes' => 'nullable|string|max:500',
+            'assigned_space_id' => 'nullable|integer|exists:spaces,id',
         ];
     }
 }

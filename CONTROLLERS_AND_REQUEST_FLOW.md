@@ -313,12 +313,11 @@ Flow:
 Validation:
 
 - Same period rules as index
-- `format`: `pdf` or `json`
+- `format`: `pdf`
 
 Flow:
 
 - Reuses `index($request)->getData(true)` for data payload.
-- If `format=json`: returns JSON payload.
 - If `format=pdf`:
   - If DomPDF facade exists: renders `resources/views/reports/export.blade.php` and downloads a PDF.
   - Else: returns JSON payload (fallback).

@@ -14,6 +14,7 @@ export default function OTPVerify() {
     const navigate = useNavigate();
     const { state } = useLocation();
     const email = state?.email || '';
+    const intent = state?.intent || 'user';
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -24,7 +25,18 @@ export default function OTPVerify() {
         try {
             const { data } = await api.post('/otp/verify', { email, otp });
             login(data.token, data.user);
-            navigate('/', { replace: true });
+            if (intent === 'admin') {
+                sessionStorage.removeItem('xu_profile_completion_after_otp');
+                navigate('/', { replace: true });
+                return;
+            }
+            if (data.user?.requires_profile_completion) {
+                sessionStorage.setItem('xu_profile_completion_after_otp', '1');
+                navigate('/complete-profile', { replace: true });
+            } else {
+                sessionStorage.removeItem('xu_profile_completion_after_otp');
+                navigate('/', { replace: true });
+            }
         } catch (err) {
             setError(err.response?.data?.message || 'Invalid OTP.');
         } finally {
@@ -53,7 +65,7 @@ export default function OTPVerify() {
                 <div className={`p-8 ${ui.card}`}>
                     <p className="text-slate-600 text-sm">
                         No email in session. Please{' '}
-                        <Link to="/login" className={ui.linkAccent}>
+                        <Link to={intent === 'admin' ? '/admin/login' : '/login'} className={ui.linkAccent}>
                             log in again
                         </Link>
                         .

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\StoreSpaceRequest;
 use App\Http\Requests\Api\Admin\UpdateSpaceRequest;
 use App\Models\Space;
+use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,7 +16,7 @@ class SpaceController extends Controller
     {
         $request->validate([
             'search' => 'sometimes|string|max:255',
-            'type' => 'sometimes|string|in:avr,lobby,boardroom,medical_confab,confab',
+            'type' => 'sometimes|string|in:avr,lobby,boardroom,medical_confab,confab,lecture',
         ]);
 
         $query = Space::query()->orderBy('name');
@@ -30,21 +31,21 @@ class SpaceController extends Controller
             $query->where('type', $request->query('type'));
         }
 
-        return response()->json($query->get());
+        return ApiResponse::data($query->get());
     }
 
     public function store(StoreSpaceRequest $request): JsonResponse
     {
         $space = Space::create($request->validated());
 
-        return response()->json($space, 201);
+        return ApiResponse::data($space, 201);
     }
 
     public function update(UpdateSpaceRequest $request, Space $space): JsonResponse
     {
         $space->update($request->validated());
 
-        return response()->json($space->fresh());
+        return ApiResponse::data($space->fresh());
     }
 
     public function toggleActive(Request $request, Space $space): JsonResponse
@@ -57,7 +58,7 @@ class SpaceController extends Controller
             'is_active' => $data['is_active'],
         ]);
 
-        return response()->json($space->fresh());
+        return ApiResponse::data($space->fresh());
     }
 }
 

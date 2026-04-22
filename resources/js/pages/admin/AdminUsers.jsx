@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../api';
+import { paginatorRows, unwrapData } from '../../utils/apiEnvelope';
 import { ui } from '../../theme';
 
 const PER_PAGE_OPTIONS = [10, 15, 25];
@@ -15,6 +16,10 @@ export default function AdminUsers() {
         to: null,
     });
     const [roles, setRoles] = useState([]);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRoleSlug, setInviteRoleSlug] = useState('librarian');
+    const [inviteLoading, setInviteLoading] = useState(false);
+    const [inviteFeedback, setInviteFeedback] = useState('');
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('');
@@ -68,7 +73,7 @@ export default function AdminUsers() {
         if (roleFilter) params.role = roleFilter;
         api.get('/admin/users', { params })
             .then(({ data }) => {
-                setUsers(data.data || []);
+                setUsers(paginatorRows(data));
                 setMeta({
                     current_page: data.current_page ?? 1,
                     last_page: data.last_page ?? 1,
@@ -92,7 +97,10 @@ export default function AdminUsers() {
 
     useEffect(() => {
         api.get('/admin/roles')
-            .then(({ data }) => setRoles(data))
+            .then(({ data }) => {
+                const list = unwrapData(data);
+                setRoles(Array.isArray(list) ? list : []);
+            })
             .catch(() => setRoles([]));
     }, []);
 
@@ -117,7 +125,8 @@ export default function AdminUsers() {
         });
         try {
             const { data } = await api.patch(`/admin/users/${user.id}`, payload);
-            setUsers((prev) => prev.map((u) => (u.id === user.id ? data : u)));
+            const updated = unwrapData(data);
+            setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)));
             setRowMessage(user.id, { type: 'success', text: 'Saved.' });
         } catch (err) {
             const firstKey = Object.keys(payload)[0];
@@ -134,6 +143,31 @@ export default function AdminUsers() {
     const updateRole = (user, roleId) =>
         updateUser(user, { role_id: Number(roleId) }, 'Failed to update user role.');
 
+    const sendPortalRoleInvite = async (e) => {
+        e.preventDefault();
+        setInviteFeedback('');
+        setInviteLoading(true);
+        try {
+            const { data } = await api.post('/admin/users/invite-portal-role', {
+                email: inviteEmail,
+                role_slug: inviteRoleSlug,
+            });
+            const invited = unwrapData(data);
+            setInviteFeedback(`Invite sent to ${invited?.email || inviteEmail}.`);
+            setInviteEmail('');
+            loadUsers();
+        } catch (err) {
+            const message =
+                err.response?.data?.message ||
+                err.response?.data?.errors?.email?.[0] ||
+                err.response?.data?.errors?.role_slug?.[0] ||
+                'Failed to send invite.';
+            setInviteFeedback(message);
+        } finally {
+            setInviteLoading(false);
+        }
+    };
+
     const rows = useMemo(() => users, [users]);
 
     const canPrev = meta.current_page > 1;
@@ -145,6 +179,45 @@ export default function AdminUsers() {
             <p className="text-sm text-slate-600 mb-4">
                 Search and role filter apply together. Results update as you type (short delay) or when you click Search.
             </p>
+
+            <div className={`mb-6 p-4 ${ui.card}`}>
+                <h2 className="text-sm font-semibold text-slate-900 mb-1">Invite Roles</h2>
+                <p className="text-xs text-slate-600 mb-3">
+                    Librarian and Student Assistant invites receive an email with login credentials for Admin Sign-In. These credentials are for this application only — not a Google/XU password.
+                </p>
+                <form onSubmit={sendPortalRoleInvite} className="flex flex-wrap gap-2 items-end">
+                    <div className="min-w-[18rem]">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">XU email</label>
+                        <input
+                            type="email"
+                            value={inviteEmail}
+                            onChange={(e) => setInviteEmail(e.target.value)}
+                            placeholder={inviteRoleSlug === 'student_assistant' ? 'assistant@my.xu.edu.ph' : 'librarian@xu.edu.ph'}
+                            required
+                            className={ui.input}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
+                        <select
+                            value={inviteRoleSlug}
+                            onChange={(e) => setInviteRoleSlug(e.target.value)}
+                            className={ui.select}
+                        >
+                            <option value="librarian">Librarian</option>
+                            <option value="student_assistant">Student Assistant</option>
+                        </select>
+                    </div>
+                    <button type="submit" disabled={inviteLoading} className={ui.btnPrimary}>
+                        {inviteLoading ? 'Sending…' : 'Send invite'}
+                    </button>
+                    {inviteFeedback && (
+                        <span className={`text-xs ${inviteFeedback.toLowerCase().includes('sent') ? 'text-green-700' : 'text-red-700'}`}>
+                            {inviteFeedback}
+                        </span>
+                    )}
+                </form>
+            </div>
 
             <form onSubmit={onSearchSubmit} className="mb-4 flex flex-wrap items-end gap-2">
                 <div>
@@ -211,6 +284,8 @@ export default function AdminUsers() {
                                 <tr>
                                     <th className="text-left px-4 py-2 font-semibold">Name</th>
                                     <th className="text-left px-4 py-2 font-semibold">Email</th>
+                                    <th className="text-left px-4 py-2 font-semibold">Type</th>
+                                    <th className="text-left px-4 py-2 font-semibold">College/Office</th>
                                     <th className="text-left px-4 py-2 font-semibold">Role</th>
                                     <th className="text-left px-4 py-2 font-semibold">Med Confab</th>
                                     <th className="text-left px-4 py-2 font-semibold">Boardroom</th>
@@ -220,7 +295,7 @@ export default function AdminUsers() {
                             <tbody>
                                 {rows.length === 0 && (
                                     <tr>
-                                        <td className="px-4 py-3 text-slate-500" colSpan={6}>
+                                        <td className="px-4 py-3 text-slate-500" colSpan={8}>
                                             No users found.
                                         </td>
                                     </tr>
@@ -228,6 +303,11 @@ export default function AdminUsers() {
                                 {rows.map((u) => {
                                     const busy = savingUserId === u.id;
                                     const fb = rowFeedback[u.id];
+                                    const typeLabel = u.user_type === 'student'
+                                        ? 'Student'
+                                        : u.user_type === 'faculty_staff'
+                                            ? 'Employee/Staff'
+                                            : '—';
                                     return (
                                         <tr
                                             key={u.id}
@@ -235,6 +315,8 @@ export default function AdminUsers() {
                                         >
                                             <td className="px-4 py-2 text-slate-900 font-medium">{u.name}</td>
                                             <td className="px-4 py-2 text-slate-700">{u.email}</td>
+                                            <td className="px-4 py-2 text-slate-700">{typeLabel}</td>
+                                            <td className="px-4 py-2 text-slate-700">{u.college_office || '—'}</td>
                                             <td className="px-4 py-2 text-slate-700">
                                                 <select
                                                     value={u.role_id || ''}

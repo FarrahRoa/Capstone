@@ -3,6 +3,7 @@ import axios from 'axios';
 const api = axios.create({
     baseURL: '/api',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
@@ -14,7 +15,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (r) => r,
     (err) => {
-        if (err.response?.status === 401) {
+        const reqPath = `${err.config?.baseURL ?? ''}${err.config?.url ?? ''}`;
+        const isAdminPasswordLogin = reqPath.includes('/admin/login');
+        if (err.response?.status === 401 && !isAdminPasswordLogin) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             window.location.href = '/login';

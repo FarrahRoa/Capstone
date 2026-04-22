@@ -24,9 +24,10 @@ class UpdateSpaceRequest extends FormRequest
                 'alpha_dash',
                 Rule::unique('spaces', 'slug')->ignore($this->space->id),
             ],
-            'type' => 'sometimes|required|string|in:avr,lobby,boardroom,medical_confab,confab',
+            'type' => 'sometimes|required|string|in:avr,lobby,boardroom,medical_confab,confab,lecture',
             'capacity' => 'sometimes|nullable|integer|min:1|max:65535',
             'is_active' => 'sometimes|boolean',
+            'is_confab_pool' => 'sometimes|boolean',
         ];
     }
 }

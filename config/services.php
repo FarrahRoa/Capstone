@@ -35,14 +35,5 @@ return [
         ],
     ],
 
-    /*
-    | Google OAuth client (Web application) — same ID as VITE_GOOGLE_CLIENT_ID on the frontend.
-    | Used only to verify Google Identity Services ID tokens for optional post-login profile enrichment.
-    | Scopes: openid email profile (no Gmail).
-    */
-    'google' => [
-        'client_id' => env('GOOGLE_CLIENT_ID'),
-    ],
-
 ];
 

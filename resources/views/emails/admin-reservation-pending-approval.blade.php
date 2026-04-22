@@ -11,7 +11,7 @@
     <p>
         <strong>User:</strong> {{ $reservation->user->name }} ({{ $reservation->user->email }})<br>
         <strong>Space:</strong> {{ $reservation->space->name }}<br>
-        <strong>Date &amp; time:</strong> {{ $reservation->start_at->format('M j, Y g:i A') }} – {{ $reservation->end_at->format('g:i A') }}
+        <strong>Date &amp; time:</strong> {{ \App\Support\ReservationDisplayFormat::dateAndTimes($reservation->start_at, $reservation->end_at) }}
     </p>
     <p>You can review this reservation in the admin panel:</p>
     <p>

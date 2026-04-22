@@ -31,8 +31,8 @@ class ReservationCreatePermissionTest extends TestCase
     private function makeSpace(): Space
     {
         return Space::create([
-            'name' => 'AVR',
-            'slug' => 'avr',
+            'name' => 'Room A',
+            'slug' => 'room-a',
             'type' => 'avr',
             'capacity' => 10,
             'is_active' => true,

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api';
+import { unwrapData } from '../utils/apiEnvelope';
 
 const AuthContext = createContext(null);
 
@@ -20,7 +21,15 @@ export function AuthProvider({ children }) {
             return null;
         }
     });
-    const [loading, setLoading] = useState(true);
+    /**
+     * "loading" means "we don't yet know if there's an authenticated user".
+     * If we have a cached user, we can render immediately and refresh /me in the background.
+     */
+    const [loading, setLoading] = useState(() => {
+        const token = localStorage.getItem('token');
+        if (!token) return false;
+        return !Boolean(user);
+    });
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -28,9 +37,11 @@ export function AuthProvider({ children }) {
             setLoading(false);
             return;
         }
+        // If we already have a cached user, don't block the app shell on /me.
+        if (user) setLoading(false);
         api.get('/me')
             .then(({ data }) => {
-                const normalized = normalizeUser(data);
+                const normalized = normalizeUser(unwrapData(data));
                 setUser(normalized);
                 localStorage.setItem('user', JSON.stringify(normalized));
             })
@@ -53,7 +64,7 @@ export function AuthProvider({ children }) {
         const token = localStorage.getItem('token');
         if (!token) return;
         const { data } = await api.get('/me');
-        const normalized = normalizeUser(data);
+        const normalized = normalizeUser(unwrapData(data));
         localStorage.setItem('user', JSON.stringify(normalized));
         setUser(normalized);
     };

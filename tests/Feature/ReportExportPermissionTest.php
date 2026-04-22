@@ -33,8 +33,8 @@ class ReportExportPermissionTest extends TestCase
         $requester = $this->makeUserWithRole('student', 'Student');
         $admin = $this->makeUserWithRole('admin', 'Admin');
         $space = Space::create([
-            'name' => 'AVR',
-            'slug' => 'avr',
+            'name' => 'Room A',
+            'slug' => 'room-a',
             'type' => 'avr',
             'capacity' => 10,
             'is_active' => true,
@@ -53,32 +53,36 @@ class ReportExportPermissionTest extends TestCase
 
         ReservationLog::create([
             'reservation_id' => $reservation->id,
-            'admin_id' => $requester->id,
+            'actor_user_id' => $requester->id,
+            'actor_type' => ReservationLog::ACTOR_USER,
             'action' => ReservationLog::ACTION_CREATE,
         ]);
         ReservationLog::create([
             'reservation_id' => $reservation->id,
-            'admin_id' => $admin->id,
+            'actor_user_id' => $admin->id,
+            'actor_type' => ReservationLog::ACTOR_ADMIN,
             'action' => ReservationLog::ACTION_APPROVE,
             'notes' => 'Approved for export test',
         ]);
     }
 
-    public function test_admin_can_export_reports_json_with_consistent_labels(): void
+    public function test_admin_reports_endpoint_returns_consistent_labels(): void
     {
         $this->seedReservationAndLog();
         $admin = $this->makeUserWithRole('admin', 'Admin');
         Sanctum::actingAs($admin);
 
-        $response = $this->getJson('/api/admin/reports/export?format=json');
+        $response = $this->getJson('/api/admin/reports');
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
-            'summary',
-            'status_totals',
-            'action_totals',
-            'recent_activity',
-            'reservation_rows',
+            'data' => [
+                'summary',
+                'status_totals',
+                'action_totals',
+                'recent_activity',
+                'reservation_rows',
+            ],
         ]);
         $response->assertJsonFragment([
             'status' => Reservation::STATUS_APPROVED,
@@ -90,13 +94,13 @@ class ReportExportPermissionTest extends TestCase
         ]);
     }
 
-    public function test_librarian_cannot_export_reports(): void
+    public function test_librarian_cannot_export_reports_pdf(): void
     {
         $this->seedReservationAndLog();
         $librarian = $this->makeUserWithRole('librarian', 'Librarian');
         Sanctum::actingAs($librarian);
 
-        $response = $this->getJson('/api/admin/reports/export?format=json');
+        $response = $this->getJson('/api/admin/reports/export?format=pdf');
         $response->assertStatus(403);
     }
 }

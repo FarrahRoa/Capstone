@@ -233,7 +233,7 @@ Controller: `App\Http\Controllers\Api\Admin\ReportController`
   - average reservation duration
   - average approval time (verified_at → approved_at)
 
-- `GET /api/admin/reports/export` supports `format=pdf` or `format=json`
+- `GET /api/admin/reports/export` supports `format=pdf`
   - PDF export uses `Barryvdh\DomPDF\Facade\Pdf::loadView('reports.export', ...)` if DomPDF facade exists
   - View: `resources/views/reports/export.blade.php`
 

@@ -29,14 +29,20 @@ class DatabaseSeeder extends Seeder
         PolicyDocument::reservationGuidelines();
 
         $adminRole = Role::where('slug', 'admin')->first();
-        if ($adminRole && ! User::where('email', 'admin@xu.edu.ph')->exists()) {
-            User::factory()->create([
-                'name' => 'Library Admin',
-                'email' => 'admin@xu.edu.ph',
-                'password' => bcrypt('password'),
-                'role_id' => $adminRole->id,
-                'is_activated' => true,
-            ]);
+        if ($adminRole) {
+            User::updateOrCreate(
+                ['email' => 'admin@xu.edu.ph'],
+                [
+                    'name' => 'Library Admin',
+                    'password' => bcrypt('password'),
+                    'role_id' => $adminRole->id,
+                    'is_activated' => true,
+                    'admin_invite_token_hash' => null,
+                    'admin_invite_expires_at' => null,
+                    'admin_invited_at' => null,
+                    'admin_password_set_at' => null,
+                ]
+            );
         }
 
         $demoUsers = [

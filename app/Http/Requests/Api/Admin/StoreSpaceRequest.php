@@ -16,9 +16,10 @@ class StoreSpaceRequest extends FormRequest
         return [
             'name' => 'required|string|max:255',
             'slug' => 'required|string|max:255|alpha_dash|unique:spaces,slug',
-            'type' => 'required|string|in:avr,lobby,boardroom,medical_confab,confab',
+            'type' => 'required|string|in:avr,lobby,boardroom,medical_confab,confab,lecture',
             'capacity' => 'nullable|integer|min:1|max:65535',
             'is_active' => 'sometimes|boolean',
+            'is_confab_pool' => 'sometimes|boolean',
         ];
     }
 }

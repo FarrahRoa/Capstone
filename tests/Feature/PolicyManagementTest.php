@@ -34,9 +34,18 @@ class PolicyManagementTest extends TestCase
         $response = $this->getJson('/api/reservation-guidelines');
 
         $response->assertStatus(200);
-        $response->assertJsonStructure(['slug', 'content', 'updated_at']);
-        $response->assertJsonPath('slug', PolicyDocument::SLUG_RESERVATION_GUIDELINES);
-        $this->assertNotSame('', $response->json('content'));
+        $response->assertJsonStructure([
+            'data' => [
+                'slug',
+                'content',
+                'updated_at',
+                'confab_guidelines_content',
+                'confab_guidelines_updated_at',
+                'confab_room_comparisons',
+            ],
+        ]);
+        $response->assertJsonPath('data.slug', PolicyDocument::SLUG_RESERVATION_GUIDELINES);
+        $this->assertNotSame('', $response->json('data.content'));
         $this->assertDatabaseHas('policy_documents', [
             'slug' => PolicyDocument::SLUG_RESERVATION_GUIDELINES,
         ]);
@@ -49,7 +58,19 @@ class PolicyManagementTest extends TestCase
 
         $getResponse = $this->getJson('/api/admin/policies/reservation-guidelines');
         $getResponse->assertStatus(200);
-        $getResponse->assertJsonPath('slug', PolicyDocument::SLUG_RESERVATION_GUIDELINES);
+        $getResponse->assertJsonPath('data.slug', PolicyDocument::SLUG_RESERVATION_GUIDELINES);
+        $getResponse->assertJsonStructure([
+            'data' => [
+                'slug',
+                'content',
+                'updated_at',
+                'confab_guidelines_content',
+                'confab_guidelines_updated_at',
+                'confab_room_comparisons',
+                'spaces',
+            ],
+        ]);
+        $this->assertIsArray($getResponse->json('data.spaces'));
 
         $newContent = "Line one.\n\nLine two for thesis demo.";
 
@@ -58,9 +79,18 @@ class PolicyManagementTest extends TestCase
         ]);
 
         $putResponse->assertStatus(200);
-        $putResponse->assertJsonFragment([
-            'message' => 'Reservation guidelines saved.',
-            'content' => $newContent,
+        $putResponse->assertJsonPath('message', 'Reservation guidelines saved.');
+        $putResponse->assertJsonPath('data.content', $newContent);
+        $putResponse->assertJsonStructure([
+            'data' => [
+                'slug',
+                'content',
+                'updated_at',
+                'confab_guidelines_content',
+                'confab_guidelines_updated_at',
+                'confab_room_comparisons',
+                'spaces',
+            ],
         ]);
 
         $this->assertDatabaseHas('policy_documents', [

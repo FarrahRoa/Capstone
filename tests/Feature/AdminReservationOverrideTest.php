@@ -34,8 +34,8 @@ class AdminReservationOverrideTest extends TestCase
     private function makeSpace(): Space
     {
         return Space::create([
-            'name' => 'AVR',
-            'slug' => 'avr',
+            'name' => 'Room A',
+            'slug' => 'room-a',
             'type' => 'avr',
             'capacity' => 10,
             'is_active' => true,
@@ -90,8 +90,9 @@ class AdminReservationOverrideTest extends TestCase
 
         $this->assertDatabaseHas('reservation_logs', [
             'reservation_id' => $reservation->id,
-            'admin_id' => $admin->id,
-            'action' => 'override',
+            'actor_user_id' => $admin->id,
+            'actor_type' => ReservationLog::ACTOR_ADMIN,
+            'action' => ReservationLog::ACTION_OVERRIDE,
             'notes' => 'Approved via override',
         ]);
 
@@ -121,7 +122,7 @@ class AdminReservationOverrideTest extends TestCase
 
         $this->assertDatabaseMissing('reservation_logs', [
             'reservation_id' => $reservation->id,
-            'action' => 'override',
+            'action' => ReservationLog::ACTION_OVERRIDE,
         ]);
 
         Mail::assertNothingSent();
@@ -148,7 +149,7 @@ class AdminReservationOverrideTest extends TestCase
 
         $this->assertDatabaseMissing('reservation_logs', [
             'reservation_id' => $reservation->id,
-            'action' => 'override',
+            'action' => ReservationLog::ACTION_OVERRIDE,
         ]);
 
         Mail::assertNothingSent();
@@ -175,7 +176,7 @@ class AdminReservationOverrideTest extends TestCase
 
         $this->assertDatabaseMissing('reservation_logs', [
             'reservation_id' => $reservation->id,
-            'action' => 'override',
+            'action' => ReservationLog::ACTION_OVERRIDE,
         ]);
 
         Mail::assertNothingSent();

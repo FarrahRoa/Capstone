@@ -8,7 +8,7 @@
 <body style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <h2>Xavier University Library – Reservation Update</h2>
     <p>Hello {{ $reservation->user->name }},</p>
-    <p>Your reservation for <strong>{{ $reservation->space->name }}</strong> on {{ $reservation->start_at->format('M j, Y') }} is no longer confirmed.</p>
+    <p>Your reservation for <strong>{{ $reservation->space->userFacingName() }}</strong> on {{ \App\Support\ReservationDisplayFormat::date($reservation->start_at) }} is no longer confirmed.</p>
     <p><strong>Reason:</strong> {{ $reason }}</p>
     <p>You may submit a new reservation through the library reservation system.</p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">

@@ -53,7 +53,13 @@ class RoomReservationEligibilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/reservations', $this->reservationPayload($space->id));
+        $response = $this->postJson('/api/reservations', [
+            'space_id' => $space->id,
+            'start_at' => now()->addDay()->setTime(9, 0)->toDateTimeString(),
+            'end_at' => now()->addDay()->setTime(9, 30)->toDateTimeString(),
+            'event_title' => 'Med Confab',
+            'participant_count' => 5,
+        ]);
 
         $response->assertStatus(201);
         Mail::assertSent(ReservationVerificationMail::class);
@@ -88,7 +94,10 @@ class RoomReservationEligibilityTest extends TestCase
     {
         Mail::fake();
 
-        $user = $this->makeUserWithReservationCreate(['boardroom_eligible' => true]);
+        $user = $this->makeUserWithReservationCreate([
+            'boardroom_eligible' => true,
+            'college_office' => 'Office of the President',
+        ]);
         Sanctum::actingAs($user);
 
         $space = Space::create([
@@ -105,11 +114,38 @@ class RoomReservationEligibilityTest extends TestCase
         Mail::assertSent(ReservationVerificationMail::class);
     }
 
-    public function test_non_oop_user_cannot_reserve_boardroom(): void
+    public function test_eligible_ovp_higher_education_user_can_reserve_boardroom(): void
     {
         Mail::fake();
 
-        $user = $this->makeUserWithReservationCreate(['boardroom_eligible' => false]);
+        $user = $this->makeUserWithReservationCreate([
+            'boardroom_eligible' => false,
+            'college_office' => 'Office of the Vice-President Higher Education',
+        ]);
+        Sanctum::actingAs($user);
+
+        $space = Space::create([
+            'name' => 'Boardroom',
+            'slug' => 'boardroom',
+            'type' => Space::TYPE_BOARDROOM,
+            'capacity' => 12,
+            'is_active' => true,
+        ]);
+
+        $response = $this->postJson('/api/reservations', $this->reservationPayload($space->id));
+
+        $response->assertStatus(201);
+        Mail::assertSent(ReservationVerificationMail::class);
+    }
+
+    public function test_unrelated_office_cannot_reserve_boardroom_even_if_flag_is_true(): void
+    {
+        Mail::fake();
+
+        $user = $this->makeUserWithReservationCreate([
+            'boardroom_eligible' => true,
+            'college_office' => 'Finance',
+        ]);
         Sanctum::actingAs($user);
 
         $space = Space::create([
@@ -125,7 +161,7 @@ class RoomReservationEligibilityTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['space_id']);
         $response->assertJsonFragment([
-            'space_id' => ['Only authorized Office of the President users can reserve Boardroom.'],
+            'space_id' => ['Only authorized Office of the President and Office of the Vice-President Higher Education users can reserve Boardroom.'],
         ]);
         Mail::assertNothingSent();
     }
@@ -142,7 +178,7 @@ class RoomReservationEligibilityTest extends TestCase
 
         $space = Space::create([
             'name' => 'AVR',
-            'slug' => 'avr',
+            'slug' => 'room-a',
             'type' => 'avr',
             'capacity' => 10,
             'is_active' => true,
