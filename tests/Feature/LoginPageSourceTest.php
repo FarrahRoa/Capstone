@@ -28,8 +28,8 @@ class LoginPageSourceTest extends TestCase
         $this->assertStringContainsString('Xavier University Library', $content);
         $this->assertStringContainsString('Employee/Staff', $content);
         $this->assertStringContainsString('xuLogotypeUrl', $content);
-        $this->assertStringContainsString('xu-logotype-stacked.svg', $content);
-        $this->assertStringContainsString('alt="Xavier University"', $content);
+        $this->assertStringContainsString('2023%20XU%20Logotype%20Revision%20V2%20Stacked_Full%20Color.png', $content);
+        $this->assertStringContainsString('alt="Xavier University Library Logo"', $content);
     }
 
     public function test_login_email_step_uses_distinct_sign_in_and_sign_up_loading_states(): void
@@ -69,8 +69,8 @@ class LoginPageSourceTest extends TestCase
         $this->assertFileExists($path);
         $content = file_get_contents($path);
         $this->assertStringContainsString('xuLogotypeUrl', $content);
-        $this->assertStringContainsString('xu-logotype-stacked.svg', $content);
-        $this->assertStringContainsString('alt="Xavier University"', $content);
+        $this->assertStringContainsString('2023%20XU%20Logotype%20Revision%20V2%20Stacked_Full%20Color.png', $content);
+        $this->assertStringContainsString('alt="Xavier University Library Logo"', $content);
         $this->assertStringContainsString('Admin Sign-In', $content);
         $this->assertStringNotContainsString('Admin sign in', $content);
         $this->assertStringContainsString('object-contain', $content);

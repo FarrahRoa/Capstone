@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import api from './api';
 import { ui } from './theme';
-import xuLogotypeUrl from '../images/xu-logotype-stacked.svg';
+const xuLogotypeUrl = '/2023%20XU%20Logotype%20Revision%20V2%20Stacked_Full%20Color.png';
 
 function AdminLoginStandalone() {
     const [email, setEmail] = useState('');
@@ -46,7 +46,7 @@ function AdminLoginStandalone() {
                     <div className="mb-6 flex w-full justify-center sm:mb-7">
                         <img
                             src={xuLogotypeUrl}
-                            alt="Xavier University"
+                            alt="Xavier University Library Logo"
                             width={560}
                             height={180}
                             fetchpriority="high"

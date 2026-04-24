@@ -7,7 +7,7 @@
     <title>XU Library - Admin Sign-In</title>
 
     @php
-        $logoUrl = Vite::asset('resources/images/xu-logotype-stacked.svg');
+        $logoUrl = '/2023%20XU%20Logotype%20Revision%20V2%20Stacked_Full%20Color.png';
     @endphp
     <link rel="preload" as="image" href="{{ $logoUrl }}" fetchpriority="high">
 
@@ -21,7 +21,7 @@
                     <div class="mb-6 flex w-full justify-center sm:mb-7">
                         <img
                             src="{{ $logoUrl }}"
-                            alt="Xavier University"
+                            alt="Xavier University Library Logo"
                             width="560"
                             height="180"
                             fetchpriority="high"

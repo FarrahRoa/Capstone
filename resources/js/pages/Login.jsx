@@ -4,7 +4,7 @@ import api from '../api';
 import DeferredMount from '../components/DeferredMount';
 import { useAuth } from '../contexts/AuthContext';
 import { ui } from '../theme';
-import xuLogotypeUrl from '../../images/xu-logotype-stacked.svg';
+const xuLogotypeUrl = '/2023%20XU%20Logotype%20Revision%20V2%20Stacked_Full%20Color.png';
 
 const PublicScheduleBoard = lazy(() => import('../components/booking/PublicScheduleBoard'));
 
@@ -81,7 +81,7 @@ export default function Login() {
                         <div className="mb-6 flex w-full justify-center sm:mb-8">
                             <img
                                 src={xuLogotypeUrl}
-                                alt="Xavier University"
+                                alt="Xavier University Library Logo"
                                 width={560}
                                 height={180}
                                 fetchpriority="high"

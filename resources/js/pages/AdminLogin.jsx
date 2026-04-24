@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { ui } from '../theme';
-import xuLogotypeUrl from '../../images/xu-logotype-stacked.svg';
+const xuLogotypeUrl = '/2023%20XU%20Logotype%20Revision%20V2%20Stacked_Full%20Color.png';
 
 export default function AdminLogin() {
     const [email, setEmail] = useState('');
@@ -43,7 +43,7 @@ export default function AdminLogin() {
                     <div className="mb-6 flex w-full justify-center sm:mb-7">
                         <img
                             src={xuLogotypeUrl}
-                            alt="Xavier University"
+                            alt="Xavier University Library Logo"
                             width={560}
                             height={180}
                             fetchpriority="high"
