@@ -39,7 +39,9 @@ class ReservationController extends Controller
         if ($request->has('to')) {
             $query->whereDate('start_at', '<=', $request->input('to'));
         }
-        $reservations = $query->paginate(20);
+
+        $perPage = min(100, max(1, (int) $request->input('per_page', 20)));
+        $reservations = $query->paginate($perPage);
 
         return response()->json($reservations);
     }

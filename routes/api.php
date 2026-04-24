@@ -22,6 +22,7 @@ Route::post('/reservations/confirm-email', [App\Http\Controllers\Api\Reservation
 
 Route::middleware(['auth:sanctum', 'token.fresh'])->group(function () {
     Route::get('/me', [App\Http\Controllers\Api\AuthController::class, 'me']);
+    Route::get('/dashboard/summary', App\Http\Controllers\Api\DashboardSummaryController::class);
     Route::post('/me/profile', [App\Http\Controllers\Api\AuthController::class, 'completeProfile']);
     Route::patch('/me/account', [App\Http\Controllers\Api\AuthController::class, 'updateAccount']);
     Route::post('/logout', [App\Http\Controllers\Api\AuthController::class, 'logout']);

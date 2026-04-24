@@ -2,6 +2,8 @@ import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+const Layout = lazy(() => import('./components/Layout'));
+const HomeDashboard = lazy(() => import('./pages/HomeDashboard'));
 
 const Login = lazy(() => import('./pages/Login'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
@@ -10,7 +12,6 @@ const OTPVerify = lazy(() => import('./pages/OTPVerify'));
 const CompleteProfile = lazy(() => import('./pages/CompleteProfile'));
 const AccountSettings = lazy(() => import('./pages/AccountSettings'));
 const Calendar = lazy(() => import('./pages/Calendar'));
-const HomeDashboard = lazy(() => import('./pages/HomeDashboard'));
 const ReservationForm = lazy(() => import('./pages/ReservationForm'));
 const MyReservations = lazy(() => import('./pages/MyReservations'));
 const ConfirmReservation = lazy(() => import('./pages/ConfirmReservation'));
@@ -23,7 +24,6 @@ const AdminDeanEmails = lazy(() => import('./pages/admin/AdminDeanEmails'));
 const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours'));
 const AdminCloudSync = lazy(() => import('./pages/admin/AdminCloudSync'));
 const Unauthorized = lazy(() => import('./pages/Unauthorized'));
-const Layout = lazy(() => import('./components/Layout'));
 
 function RouteLoading() {
     return (

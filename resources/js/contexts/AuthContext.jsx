@@ -1,8 +1,15 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import api from '../api';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { unwrapData } from '../utils/apiEnvelope';
 
 const AuthContext = createContext(null);
+
+let apiClientPromise = null;
+async function getApiClient() {
+    if (!apiClientPromise) {
+        apiClientPromise = import('../api').then((m) => m.default || m);
+    }
+    return apiClientPromise;
+}
 
 function normalizeUser(userData) {
     if (!userData) return null;
@@ -38,20 +45,60 @@ export function AuthProvider({ children }) {
             return;
         }
         // If we already have a cached user, don't block the app shell on /me.
-        if (user) setLoading(false);
-        api.get('/me')
-            .then(({ data }) => {
-                const normalized = normalizeUser(unwrapData(data));
-                setUser(normalized);
-                localStorage.setItem('user', JSON.stringify(normalized));
-            })
-            .catch(() => {
+        // Also avoid pulling the API client/axios into the first paint critical path:
+        // refresh /me after first paint/idle instead.
+        const hasCachedUser = Boolean(user);
+        if (hasCachedUser) setLoading(false);
+        let cancelled = false;
+        /** @type {number | null} */
+        let timeoutId = null;
+        /** @type {number | null} */
+        let idleId = null;
+        (async () => {
+            try {
+                const load = async () => {
+                    const api = await getApiClient();
+                    const { data } = await api.get('/me');
+                    if (cancelled) return;
+                    const normalized = normalizeUser(unwrapData(data));
+                    setUser(normalized);
+                    localStorage.setItem('user', JSON.stringify(normalized));
+                };
+
+                if (hasCachedUser) {
+                    const w = /** @type {any} */ (window);
+                    if (typeof w.requestIdleCallback === 'function') {
+                        idleId = w.requestIdleCallback(() => load(), { timeout: 1500 });
+                        return;
+                    }
+                    timeoutId = window.setTimeout(() => load(), 0);
+                    return;
+                }
+
+                await load();
+            } catch {
+                if (cancelled) return;
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 setUser(null);
-            })
-            .finally(() => setLoading(false));
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+            if (timeoutId != null) window.clearTimeout(timeoutId);
+            if (idleId != null) {
+                const w = /** @type {any} */ (window);
+                w.cancelIdleCallback?.(idleId);
+            }
+        };
     }, []);
+
+    const permissionSet = useMemo(() => {
+        const perms = user?.permissions;
+        return Array.isArray(perms) ? new Set(perms) : new Set();
+    }, [user?.permissions]);
 
     const login = (token, userData) => {
         const normalized = normalizeUser(userData);
@@ -63,6 +110,7 @@ export function AuthProvider({ children }) {
     const refreshUser = async () => {
         const token = localStorage.getItem('token');
         if (!token) return;
+        const api = await getApiClient();
         const { data } = await api.get('/me');
         const normalized = normalizeUser(unwrapData(data));
         localStorage.setItem('user', JSON.stringify(normalized));
@@ -71,21 +119,29 @@ export function AuthProvider({ children }) {
 
     const hasPermission = (permission) => {
         if (!permission) return false;
-        return Array.isArray(user?.permissions) && user.permissions.includes(permission);
+        return permissionSet.has(permission);
     };
 
     const hasAnyPermission = (permissions = []) => {
         if (!Array.isArray(permissions) || permissions.length === 0) return false;
-        return permissions.some((permission) => hasPermission(permission));
+        for (const p of permissions) {
+            if (permissionSet.has(p)) return true;
+        }
+        return false;
     };
 
     const hasAllPermissions = (permissions = []) => {
         if (!Array.isArray(permissions) || permissions.length === 0) return true;
-        return permissions.every((permission) => hasPermission(permission));
+        for (const p of permissions) {
+            if (!permissionSet.has(p)) return false;
+        }
+        return true;
     };
 
     const logout = () => {
-        api.post('/logout').catch(() => {});
+        getApiClient()
+            .then((api) => api.post('/logout'))
+            .catch(() => {});
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         try {

@@ -34,6 +34,7 @@ export default function PublicScheduleBoard() {
             spacesLoadError={spacesLoadError}
             embedded
             readOnly
+            headingLevel={2}
         />
     );
 }

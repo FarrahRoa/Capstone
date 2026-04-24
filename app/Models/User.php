@@ -192,13 +192,37 @@ class User extends Authenticatable
      */
     public function toApiArray(): array
     {
-        $data = $this->load('role')->toArray();
-        $data['permissions'] = $this->getPermissions();
-        $data['user_type'] = $this->user_type ?? static::getUserTypeFromEmail($this->email);
-        $data['profile_complete'] = $this->isProfileComplete();
-        $data['requires_profile_completion'] = (bool) $this->is_activated && !$data['profile_complete'];
+        // Keep the API payload intentionally small: `toArray()` includes many columns the SPA never reads
+        // and increases JSON encode/decode cost on the critical `/me` path.
+        $this->loadMissing('role');
 
-        return $data;
+        $userType = $this->user_type ?? static::getUserTypeFromEmail($this->email);
+        $profileComplete = $this->isProfileComplete();
+
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'email' => $this->email,
+            'role_id' => $this->role_id,
+            'role' => $this->role
+                ? [
+                    'id' => $this->role->id,
+                    'name' => $this->role->name,
+                    'slug' => $this->role->slug,
+                    'description' => $this->role->description,
+                ]
+                : null,
+            'permissions' => $this->getPermissions(),
+            'user_type' => $userType,
+            'college_office' => $this->college_office,
+            'mobile_number' => $this->mobile_number,
+            'is_activated' => (bool) $this->is_activated,
+            'profile_completed_at' => $this->profile_completed_at,
+            'med_confab_eligible' => (bool) $this->med_confab_eligible,
+            'boardroom_eligible' => (bool) $this->boardroom_eligible,
+            'profile_complete' => $profileComplete,
+            'requires_profile_completion' => (bool) $this->is_activated && !$profileComplete,
+        ];
     }
 
     public function isProfileComplete(): bool

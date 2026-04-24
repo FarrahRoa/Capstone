@@ -25,6 +25,8 @@ export default function Layout({ children }) {
     const [accountOpen, setAccountOpen] = useState(false);
     const [navOpen, setNavOpen] = useState(false);
     const accountRef = useRef(null);
+    const navButtonRef = useRef(null);
+    const navCloseButtonRef = useRef(null);
     const canViewCalendar = hasPermission('calendar.view');
     const canCreateReservation = hasPermission('reservation.create');
     const canViewOwnReservations = hasPermission('reservation.view_own');
@@ -49,6 +51,7 @@ export default function Layout({ children }) {
     }, [user?.name, user?.role?.name]);
 
     useEffect(() => {
+        if (!accountOpen) return;
         const onDoc = (e) => {
             if (!accountRef.current) return;
             if (accountRef.current.contains(e.target)) return;
@@ -56,11 +59,33 @@ export default function Layout({ children }) {
         };
         document.addEventListener('mousedown', onDoc);
         return () => document.removeEventListener('mousedown', onDoc);
-    }, []);
+    }, [accountOpen]);
 
     useEffect(() => {
         setNavOpen(false);
     }, [location.pathname]);
+
+    useEffect(() => {
+        if (!navOpen) return;
+
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') setNavOpen(false);
+        };
+        document.addEventListener('keydown', onKeyDown);
+
+        // Reasonable focus behavior: move focus into drawer close button.
+        navCloseButtonRef.current?.focus?.();
+
+        return () => {
+            document.body.style.overflow = prevOverflow;
+            document.removeEventListener('keydown', onKeyDown);
+            // Restore focus to the hamburger that opened the drawer.
+            navButtonRef.current?.focus?.();
+        };
+    }, [navOpen]);
 
     const closeMobileNav = () => setNavOpen(false);
 
@@ -148,13 +173,14 @@ export default function Layout({ children }) {
 
     const NavMenuButton = ({ className = '' }) => (
         <button
+            ref={navButtonRef}
             type="button"
             className={[
                 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/25 bg-white/10 text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-xu-gold/70',
                 className,
             ].join(' ')}
             aria-expanded={navOpen ? 'true' : 'false'}
-            aria-controls="layout-primary-nav-mobile"
+            aria-controls="layout-primary-nav-drawer"
             aria-label={navOpen ? 'Close menu' : 'Open menu'}
             onClick={toggleNav}
         >
@@ -264,21 +290,62 @@ export default function Layout({ children }) {
                             </button>
                         </div>
                     </div>
-                    {navOpen && hasPrimaryNav && (
-                        <div
-                            id="layout-primary-nav-mobile"
-                            className={[
-                                'border-t border-white/15 bg-xu-primary/95 py-3 shadow-inner backdrop-blur-sm',
-                                forceHamburgerNav ? '' : '2xl:hidden',
-                            ].join(' ')}
-                        >
-                            <div className="flex max-h-[min(70vh,28rem)] flex-col gap-0.5 overflow-y-auto overscroll-y-contain px-1 [scrollbar-width:thin]">
-                                {navLinkItems(navItemClassMobile, closeMobileNav)}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </nav>
+
+            {navOpen && hasPrimaryNav && (
+                <div className="fixed inset-0 z-50">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/45 transition-opacity"
+                        aria-label="Close navigation"
+                        onClick={() => setNavOpen(false)}
+                    />
+                    <aside
+                        id="layout-primary-nav-drawer"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Navigation"
+                        className={[
+                            'absolute left-0 top-0 h-full w-[18rem] sm:w-72 md:w-80',
+                            'bg-xu-primary text-white shadow-2xl ring-1 ring-black/15',
+                            'transform transition-transform duration-200 ease-out',
+                            navOpen ? 'translate-x-0' : '-translate-x-full',
+                        ].join(' ')}
+                    >
+                        <div className="flex h-full flex-col">
+                            <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-4 sm:px-5">
+                                <div className="min-w-0">
+                                    <p className="truncate font-serif text-base font-semibold tracking-tight text-white">
+                                        XU Library
+                                    </p>
+                                    <p className="truncate text-xs font-medium tracking-wide text-white/75">
+                                        Navigation
+                                    </p>
+                                </div>
+                                <button
+                                    ref={navCloseButtonRef}
+                                    type="button"
+                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/25 bg-white/10 text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-xu-gold/70"
+                                    onClick={() => setNavOpen(false)}
+                                    aria-label="Close navigation"
+                                >
+                                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                                        <path d="M6 6l12 12M18 6L6 18" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto overscroll-y-contain px-2 py-3 [scrollbar-width:thin]">
+                                <div className="flex flex-col gap-1">
+                                    {navLinkItems(navItemClassMobile, closeMobileNav)}
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            )}
+
             <main className="mx-auto min-w-0 w-full max-w-7xl px-3 py-5 sm:px-4 sm:py-6 md:px-5 lg:px-6">{children}</main>
         </div>
     );

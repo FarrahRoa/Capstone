@@ -28,7 +28,7 @@ class LoginPageSourceTest extends TestCase
         $this->assertStringContainsString('Xavier University Library', $content);
         $this->assertStringContainsString('Employee/Staff', $content);
         $this->assertStringContainsString('xuLogotypeUrl', $content);
-        $this->assertStringContainsString('2023 XU Logotype Revision V2 Stacked_Full Color.png', $content);
+        $this->assertStringContainsString('xu-logotype-stacked.svg', $content);
         $this->assertStringContainsString('alt="Xavier University"', $content);
     }
 
@@ -69,7 +69,7 @@ class LoginPageSourceTest extends TestCase
         $this->assertFileExists($path);
         $content = file_get_contents($path);
         $this->assertStringContainsString('xuLogotypeUrl', $content);
-        $this->assertStringContainsString('2023 XU Logotype Revision V2 Stacked_Full Color.png', $content);
+        $this->assertStringContainsString('xu-logotype-stacked.svg', $content);
         $this->assertStringContainsString('alt="Xavier University"', $content);
         $this->assertStringContainsString('Admin Sign-In', $content);
         $this->assertStringNotContainsString('Admin sign in', $content);

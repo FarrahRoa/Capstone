@@ -20,7 +20,8 @@ class AdminScheduleOverviewSourceTest extends TestCase
 
     public function test_home_dashboard_fetches_operational_spaces_when_admin_schedule_viewer(): void
     {
-        $path = base_path('resources/js/pages/HomeDashboard.jsx');
+        $path = base_path('resources/js/components/dashboard/HomeDashboardDeferredSections.jsx');
+        $this->assertFileExists($path);
         $content = file_get_contents($path);
         $this->assertStringContainsString("operational: 1", $content);
         $this->assertStringContainsString('adminSchedule', $content);

@@ -4,7 +4,7 @@ import api from '../api';
 import DeferredMount from '../components/DeferredMount';
 import { useAuth } from '../contexts/AuthContext';
 import { ui } from '../theme';
-import xuLogotypeUrl from '../../../2023 XU Logotype Revision V2 Stacked_Full Color.png';
+import xuLogotypeUrl from '../../images/xu-logotype-stacked.svg';
 
 const PublicScheduleBoard = lazy(() => import('../components/booking/PublicScheduleBoard'));
 
@@ -82,6 +82,9 @@ export default function Login() {
                             <img
                                 src={xuLogotypeUrl}
                                 alt="Xavier University"
+                                width={560}
+                                height={180}
+                                fetchpriority="high"
                                 decoding="async"
                                 className="mx-auto h-auto w-full max-w-[min(100%,16rem)] object-contain sm:max-w-[18rem]"
                             />
@@ -119,7 +122,7 @@ export default function Login() {
                                                     </span>
                                                 </span>
                                                 <span
-                                                    className="mt-0.5 shrink-0 text-lg leading-none text-xu-secondary/45 transition group-hover:text-xu-secondary"
+                                                    className="mt-0.5 shrink-0 text-lg leading-none text-xu-secondary/70 transition group-hover:text-xu-secondary"
                                                     aria-hidden="true"
                                                 >
                                                     →
@@ -139,7 +142,7 @@ export default function Login() {
                                                     </span>
                                                 </span>
                                                 <span
-                                                    className="mt-0.5 shrink-0 text-lg leading-none text-xu-secondary/45 transition group-hover:text-xu-secondary"
+                                                    className="mt-0.5 shrink-0 text-lg leading-none text-xu-secondary/70 transition group-hover:text-xu-secondary"
                                                     aria-hidden="true"
                                                 >
                                                     →

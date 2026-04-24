@@ -73,6 +73,7 @@ export default function BookingCalendar({
     spacesLoadError,
     embedded = false,
     readOnly = false,
+    headingLevel = 3,
 }) {
     const { hasPermission } = useAuth();
     const adminSchedule = isAdminScheduleViewer(user, hasPermission);
@@ -290,6 +291,8 @@ export default function BookingCalendar({
         ? 'bg-white min-w-0 rounded-2xl border border-slate-200/90 shadow-lg shadow-slate-300/25 overflow-hidden ring-1 ring-slate-200/70'
         : 'bg-xu-page min-w-0 -mx-4 px-4 py-8 sm:mx-0 sm:rounded-2xl sm:px-8 border border-slate-200/60 sm:border-0';
 
+    const HeadingTag = `h${headingLevel}`;
+
     return (
         <div id={embedded ? 'book-a-space' : undefined} className={shellClass}>
             <div
@@ -307,9 +310,9 @@ export default function BookingCalendar({
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between xl:items-center">
                         <div className="min-w-0">
                             <p className="text-xs font-semibold uppercase tracking-wider text-xu-secondary">Schedule board</p>
-                            <h3 className="mt-0.5 font-serif text-xl font-semibold text-xu-primary tracking-tight">
+                            <HeadingTag className="mt-0.5 font-serif text-xl font-semibold text-xu-primary tracking-tight">
                                 Library Venue Schedule
-                            </h3>
+                            </HeadingTag>
                             <p className="mt-1 text-xs text-slate-600 max-w-xl">
                                 {readOnly ? (
                                     <>
@@ -413,7 +416,7 @@ export default function BookingCalendar({
                                                 : 'Past date is not reservable'
                                         }
                                         className={[
-                                            'min-w-[3.25rem] shrink-0 cursor-not-allowed rounded-lg border border-slate-200/90 bg-slate-100/70 px-2 py-2 text-center text-xs font-medium text-slate-400 sm:min-w-[3.5rem] sm:px-2.5',
+                                            'min-w-[3.25rem] shrink-0 cursor-not-allowed rounded-lg border border-slate-200/90 bg-slate-100/70 px-2 py-2 text-center text-xs font-medium text-slate-500 sm:min-w-[3.5rem] sm:px-2.5',
                                             selected &&
                                                 'border-xu-primary/50 bg-xu-primary/10 text-xu-primary ring-2 ring-xu-gold/30 ring-offset-1 ring-offset-slate-50',
                                         ]
@@ -436,7 +439,7 @@ export default function BookingCalendar({
                                                 : 'No open slots for this room on this day'
                                         }
                                         className={[
-                                            'min-w-[3.25rem] shrink-0 cursor-not-allowed rounded-lg border border-dashed border-slate-300/90 bg-slate-100/90 px-2 py-2 text-center text-xs font-medium text-slate-400 sm:min-w-[3.5rem] sm:px-2.5',
+                                            'min-w-[3.25rem] shrink-0 cursor-not-allowed rounded-lg border border-dashed border-slate-300/90 bg-slate-100/90 px-2 py-2 text-center text-xs font-medium text-slate-500 sm:min-w-[3.5rem] sm:px-2.5',
                                             selected &&
                                                 'border-xu-primary/50 bg-xu-primary/15 text-xu-primary ring-2 ring-xu-gold/40 ring-offset-1 ring-offset-slate-50',
                                         ]
@@ -530,14 +533,13 @@ export default function BookingCalendar({
                                             <div key={idx} className="flex items-center justify-center py-0.5">
                                                 {isPast ? (
                                                     <div
-                                                        role="gridcell"
                                                         title={
                                                             overviewTooltip
                                                                 ? `Past date is not reservable. ${overviewTooltip}`
                                                                 : 'Past date is not reservable'
                                                         }
                                                         className={[
-                                                            'flex h-[3.25rem] w-[2.875rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-slate-200/80 bg-slate-100/70 text-sm font-semibold tabular-nums leading-none text-slate-400 sm:h-[3.6rem] sm:w-[3.25rem]',
+                                                            'flex h-[3.25rem] w-[2.875rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-slate-200/80 bg-slate-100/70 text-sm font-semibold tabular-nums leading-none text-slate-500 sm:h-[3.6rem] sm:w-[3.25rem]',
                                                             !cell.inMonth && 'opacity-40',
                                                             isSelected &&
                                                                 'border-xu-primary bg-xu-primary/15 text-xu-primary shadow-inner ring-[3px] ring-xu-gold/55 ring-offset-2 ring-offset-slate-50',
@@ -551,14 +553,13 @@ export default function BookingCalendar({
                                                     </div>
                                                 ) : full ? (
                                                     <div
-                                                        role="gridcell"
                                                         title={
                                                             overviewTooltip
                                                                 ? `No open slots for this room on this day. ${overviewTooltip}`
                                                                 : 'No open slots for this room on this day'
                                                         }
                                                         className={[
-                                                            'flex h-[3.25rem] w-[2.875rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-dashed border-slate-300/80 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,rgba(148,163,184,0.12)_4px,rgba(148,163,184,0.12)_5px)] text-sm font-semibold tabular-nums leading-none text-slate-400 sm:h-[3.6rem] sm:w-[3.25rem]',
+                                                            'flex h-[3.25rem] w-[2.875rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-dashed border-slate-300/80 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,rgba(148,163,184,0.12)_4px,rgba(148,163,184,0.12)_5px)] text-sm font-semibold tabular-nums leading-none text-slate-500 sm:h-[3.6rem] sm:w-[3.25rem]',
                                                             !cell.inMonth && 'opacity-40',
                                                             isSelected &&
                                                                 'border-xu-primary bg-xu-primary/15 text-xu-primary ring-[3px] ring-xu-gold/55 ring-offset-2 ring-offset-slate-50',
@@ -727,7 +728,7 @@ export default function BookingCalendar({
                                                                     <span className="text-xs font-bold tabular-nums text-slate-500">
                                                                         {gutter.start}
                                                                     </span>
-                                                                    <span className="text-xs tabular-nums text-slate-400">{gutter.end}</span>
+                                                                    <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
                                                                 </div>
                                                                 <div className="p-2 sm:p-2.5">
                                                                     <div
@@ -755,7 +756,7 @@ export default function BookingCalendar({
                                                             <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
                                                                 <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-white py-3 pr-2 pl-1 text-right">
                                                                     <span className="text-xs font-bold tabular-nums text-xu-primary">{gutter.start}</span>
-                                                                    <span className="text-xs tabular-nums text-slate-400">{gutter.end}</span>
+                                                                    <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
                                                                 </div>
                                                                 <div className="p-2 sm:p-2.5">
                                                                     <button
@@ -783,7 +784,7 @@ export default function BookingCalendar({
                                                         <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
                                                             <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-white py-3 pr-2 pl-1 text-right">
                                                                 <span className="text-xs font-bold tabular-nums text-xu-primary">{gutter.start}</span>
-                                                                <span className="text-xs tabular-nums text-slate-400">{gutter.end}</span>
+                                                                <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
                                                             </div>
                                                             <div className="p-2 sm:p-2.5">
                                                                 <Link

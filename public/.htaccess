@@ -4,11 +4,12 @@
     </IfModule>
 
     <IfModule mod_headers.c>
-        # Cache Vite-built hashed assets aggressively (improves repeat views + Lighthouse cache policy).
-        # Laravel Vite outputs versioned files under /build/assets (e.g. app-<hash>.js).
-        <FilesMatch "\.(?:js|css|woff2?|ttf|eot|svg|png|jpe?g|gif|webp)$">
-            Header set Cache-Control "public, max-age=31536000, immutable"
-        </FilesMatch>
+        # Long-cache only Vite output under /build/assets (hashed filenames). Avoid blanket *.js/*.css
+        # under /public so ad-hoc static files are not accidentally marked immutable.
+        # Vite's hashes can include '-' / '_' (e.g. app-BmBjjO-B.js, vendor-react-N--QU9DW.js).
+        # Some deployments may expose the Vite build assets at /assets/* instead of /build/assets/*.
+        SetEnvIf Request_URI "^/(?:build/)?assets/.+-[A-Za-z0-9_-]{8,}\\.(?:(?:js|css)(?:\\.map)?|woff2?|ttf|eot|svg|png|jpe?g|gif|webp)$" xu_vite_hashed_asset
+        Header set Cache-Control "public, max-age=31536000, immutable" env=xu_vite_hashed_asset
     </IfModule>
 
     RewriteEngine On

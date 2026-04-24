@@ -130,5 +130,70 @@ class DashboardSummaryApiTest extends TestCase
         $response->assertJsonStructure(['data', 'total']);
         $this->assertIsInt($response->json('total'));
         $this->assertIsArray($response->json('data'));
+        $this->assertLessThanOrEqual(5, count($response->json('data')));
+    }
+
+    public function test_dashboard_summary_returns_counts_for_admin_in_one_request(): void
+    {
+        $admin = $this->makeUserWithRole('admin', 'Admin');
+        Sanctum::actingAs($admin);
+
+        $space = Space::create([
+            'name' => 'Room A',
+            'slug' => 'room-a',
+            'type' => 'avr',
+            'capacity' => 10,
+            'is_active' => true,
+        ]);
+
+        Reservation::create([
+            'user_id' => $admin->id,
+            'space_id' => $space->id,
+            'start_at' => now()->addDay()->setTime(9, 0),
+            'end_at' => now()->addDay()->setTime(10, 0),
+            'status' => Reservation::STATUS_PENDING_APPROVAL,
+            'purpose' => 'Pending',
+        ]);
+        Reservation::create([
+            'user_id' => $admin->id,
+            'space_id' => $space->id,
+            'start_at' => now()->addDays(2)->setTime(10, 0),
+            'end_at' => now()->addDays(2)->setTime(11, 0),
+            'status' => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+            'purpose' => 'Email pending',
+        ]);
+
+        $response = $this->getJson('/api/dashboard/summary');
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'data' => [
+                'my_active_reservations',
+                'pending_approval',
+                'email_verification_pending',
+                'reservations_total',
+                'spaces_count',
+                'users_total',
+            ],
+        ]);
+        $this->assertSame(1, $response->json('data.pending_approval'));
+        $this->assertSame(1, $response->json('data.email_verification_pending'));
+        $this->assertSame(2, $response->json('data.reservations_total'));
+        $this->assertSame(1, $response->json('data.spaces_count'));
+        $this->assertSame(1, $response->json('data.users_total'));
+        $this->assertSame(1, $response->json('data.my_active_reservations'));
+    }
+
+    public function test_dashboard_summary_returns_only_my_reservations_for_student(): void
+    {
+        $student = $this->makeUserWithRole('student', 'Student');
+        Sanctum::actingAs($student);
+
+        $response = $this->getJson('/api/dashboard/summary');
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure(['data' => ['my_active_reservations']]);
+        $this->assertArrayNotHasKey('pending_approval', $response->json('data'));
+        $this->assertSame(0, $response->json('data.my_active_reservations'));
     }
 }

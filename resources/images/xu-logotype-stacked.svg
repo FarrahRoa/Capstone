@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="180" viewBox="0 0 560 180" role="img" aria-label="Xavier University">
+  <title>Xavier University</title>
+  <defs>
+    <style>
+      .xu-primary { fill: #283971; }
+      .xu-gold { fill: #b99430; }
+      .xu-serif { font-family: Georgia, Cambria, "Times New Roman", Times, serif; }
+      .xu-sans { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    </style>
+  </defs>
+
+  <!-- Lightweight typographic mark for fast LCP on login pages. -->
+  <g>
+    <text x="50%" y="78" text-anchor="middle" class="xu-primary xu-serif" font-size="54" font-weight="700" letter-spacing="-0.5">
+      Xavier University
+    </text>
+    <rect x="140" y="102" width="280" height="4" rx="2" class="xu-gold" />
+    <text x="50%" y="146" text-anchor="middle" class="xu-primary xu-sans" font-size="20" font-weight="600" letter-spacing="2.5">
+      LIBRARY
+    </text>
+  </g>
+</svg>

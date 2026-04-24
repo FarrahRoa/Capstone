@@ -14,6 +14,7 @@ This repository is a Laravel API + React (Vite) single-page app for room reserva
 - Setup guide: `LIBRARY_RESERVATION_SETUP.md`
 - Runbook / exact commands: `SETUP_RUNBOOK.md`
 - Mail behaviors and required config: `MAIL_NOTIFICATIONS.md`
+- Performance / Lighthouse notes: `docs/performance.md`
 
 ## About Laravel
 
