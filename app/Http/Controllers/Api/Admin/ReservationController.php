@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\Admin\ApproveReservationRequest;
-use App\Http\Requests\Api\Admin\CancelReservationRequest;
-use App\Http\Requests\Api\Admin\RejectReservationRequest;
-use App\Mail\ReservationApprovedMail;
-use App\Mail\ReservationRejectedMail;
+use App\Http\Requests\Admin\ApproveReservationRequest;
+use App\Http\Requests\Admin\CancelReservationRequest;
+use App\Http\Requests\Admin\RejectReservationRequest;
+use App\Mail\Reservation\ReservationApprovedMail;
+use App\Mail\Reservation\ReservationRejectedMail;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Space;

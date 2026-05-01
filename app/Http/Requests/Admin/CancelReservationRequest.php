@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests\Api\Admin;
+namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class RejectReservationRequest extends FormRequest
+class CancelReservationRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,7 +14,7 @@ class RejectReservationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'reason' => 'required|string|min:3|max:500',
+            'notes' => 'nullable|string|max:500',
         ];
     }
 }

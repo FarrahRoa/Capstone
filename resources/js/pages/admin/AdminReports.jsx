@@ -1,19 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../api';
 import { unwrapData } from '../../utils/apiEnvelope';
 import { ui } from '../../theme';
+import DeferredMount from '../../components/performance/DeferredMount';
 
 export default function AdminReports() {
     const [period, setPeriod] = useState('monthly');
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
     const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
     const [error, setError] = useState('');
     const [charts, setCharts] = useState(null);
 
-    const load = () => {
+    const load = useCallback(() => {
         setLoading(true);
         setError('');
         const params = { period };
@@ -22,9 +23,9 @@ export default function AdminReports() {
             .then(({ data: body }) => setData(unwrapData(body)))
             .catch((err) => setError(err.response?.data?.message || 'Failed to load reports.'))
             .finally(() => setLoading(false));
-    };
+    }, [period, from, to]);
 
-    useEffect(() => { if (period !== 'custom' || (from && to)) load(); }, [period, from, to]);
+    useEffect(() => { if (period !== 'custom' || (from && to)) load(); }, [period, from, to, load]);
 
     useEffect(() => {
         if (!data) return;
@@ -54,7 +55,7 @@ export default function AdminReports() {
         };
     }, [data, charts]);
 
-    const exportPdf = () => {
+    const exportPdf = useCallback(() => {
         setExporting(true);
         const params = { period, format: 'pdf' };
         if (period === 'custom') { params.from = from; params.to = to; }
@@ -68,7 +69,40 @@ export default function AdminReports() {
                 window.URL.revokeObjectURL(url);
             })
             .finally(() => setExporting(false));
-    };
+    }, [period, from, to]);
+
+    const isReady = !!data && !loading;
+    const chartShellCount = 6;
+    const STATUS_SHELL_COUNT = 5;
+    const ACTION_SHELL_COUNT = 6;
+    const ACTIVITY_SHELL_ROWS = 6;
+
+    const SkeletonLine = ({ className = '' }) => (
+        <span className={['inline-block align-middle rounded bg-slate-200/80', className].join(' ')} aria-hidden="true" />
+    );
+
+    const MetricCard = ({ tone = 'white', label, value }) => (
+        <div
+            className={[
+                tone === 'tint' ? 'bg-xu-primary/5' : 'bg-white',
+                'border border-slate-200/80 rounded-lg p-3 min-h-[3.25rem]',
+            ].join(' ')}
+        >
+            <strong>{label}:</strong>{' '}
+            <span className="tabular-nums">
+                {isReady ? (value ?? 0) : <SkeletonLine className="h-4 w-14 sm:w-16" />}
+            </span>
+        </div>
+    );
+
+    const SmallTotalCard = ({ label, count }) => (
+        <div className="bg-xu-page border border-slate-200/80 rounded-lg p-3 text-sm min-h-[3.25rem]">
+            <strong className="block">{label}:</strong>{' '}
+            <span className="tabular-nums">
+                {isReady ? (count ?? 0) : <SkeletonLine className="mt-2 h-4 w-10" />}
+            </span>
+        </div>
+    );
 
     return (
         <div className="min-w-0">
@@ -110,124 +144,175 @@ export default function AdminReports() {
                     </button>
                 </div>
             </div>
-            {error && <div className="mb-4 text-red-700 text-sm bg-red-50 border border-red-200 rounded p-3">{error}</div>}
-            {loading && <p className="text-slate-600">Loading…</p>}
-            {data && !loading && (
-                <div className={`min-w-0 space-y-4 p-4 sm:p-6 ${ui.cardFlat}`}>
-                    <p className="text-slate-600">
-                        Period: {data.period?.from} – {data.period?.to}
-                    </p>
-                    <section>
-                        <h2 className="font-semibold text-xu-primary font-serif mb-2">Summary</h2>
-                        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 md:grid-cols-4">
-                            <div className="bg-xu-primary/5 border border-slate-200/80 rounded-lg p-3">
-                                <strong>Total reservations:</strong> {data.summary?.total_reservations ?? 0}
-                            </div>
-                            <div className="bg-xu-primary/5 border border-slate-200/80 rounded-lg p-3">
-                                <strong>Approved:</strong> {data.summary?.approved_reservations ?? 0}
-                            </div>
-                            <div className="bg-white border border-slate-200/80 rounded-lg p-3">
-                                <strong>Avg duration:</strong> {data.summary?.average_reservation_duration_minutes ?? 0} min
-                            </div>
-                            <div className="bg-white border border-slate-200/80 rounded-lg p-3">
-                                <strong>Avg approval:</strong> {data.summary?.average_approval_time_minutes ?? 0} min
-                            </div>
-                        </div>
-                    </section>
-                    <section>
-                        <h2 className="font-semibold text-xu-primary font-serif mb-2">Status totals</h2>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
-                            {(data.status_totals || []).map((row) => (
-                                <div key={row.status} className="bg-xu-page border border-slate-200/80 rounded-lg p-3 text-sm">
-                                    <strong>{row.label}:</strong> {row.count}
+            <div className="min-h-[1.25rem] mb-4">
+                {error ? (
+                    <div className="text-red-700 text-sm bg-red-50 border border-red-200 rounded p-3">{error}</div>
+                ) : (
+                    <span className="sr-only">{loading ? 'Loading reports' : 'Reports loaded'}</span>
+                )}
+            </div>
+
+            <div className={`min-w-0 space-y-4 p-4 sm:p-6 ${ui.cardFlat}`}>
+                <p className="text-slate-600 min-h-[1.25rem]">
+                    Period:{' '}
+                    <span className="tabular-nums">
+                        {isReady ? (
+                            <>
+                                {data.period?.from} – {data.period?.to}
+                            </>
+                        ) : (
+                            <SkeletonLine className="h-4 w-48" />
+                        )}
+                    </span>
+                </p>
+
+                <section>
+                    <h2 className="font-semibold text-xu-primary font-serif mb-2">Summary</h2>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 md:grid-cols-4">
+                        <MetricCard tone="tint" label="Total reservations" value={data?.summary?.total_reservations} />
+                        <MetricCard tone="tint" label="Approved" value={data?.summary?.approved_reservations} />
+                        <MetricCard label="Avg duration" value={isReady ? `${data?.summary?.average_reservation_duration_minutes ?? 0} min` : undefined} />
+                        <MetricCard label="Avg approval" value={isReady ? `${data?.summary?.average_approval_time_minutes ?? 0} min` : undefined} />
+                    </div>
+                </section>
+
+                <section>
+                    <h2 className="font-semibold text-xu-primary font-serif mb-2">Status totals</h2>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 min-h-[8.5rem]">
+                        {isReady
+                            ? (data.status_totals || []).map((row) => (
+                                <SmallTotalCard key={row.status} label={row.label} count={row.count} />
+                            ))
+                            : Array.from({ length: STATUS_SHELL_COUNT }).map((_, idx) => (
+                                <SmallTotalCard key={`status-skel-${idx}`} label={<SkeletonLine className="h-4 w-28" />} />
+                            ))
+                        }
+                        {isReady && (data.status_totals || []).length < STATUS_SHELL_COUNT &&
+                            Array.from({ length: STATUS_SHELL_COUNT - (data.status_totals || []).length }).map((_, idx) => (
+                                <div key={`status-pad-${idx}`} className="invisible">
+                                    <SmallTotalCard label="." count={0} />
                                 </div>
                             ))}
-                        </div>
-                    </section>
-                    <section>
-                        <h2 className="font-semibold text-xu-primary font-serif mb-2">Action totals</h2>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
-                            {(data.action_totals || []).map((row) => (
-                                <div key={row.action} className="bg-xu-page border border-slate-200/80 rounded-lg p-3 text-sm">
-                                    <strong>{row.label}:</strong> {row.count}
+                    </div>
+                </section>
+
+                <section>
+                    <h2 className="font-semibold text-xu-primary font-serif mb-2">Action totals</h2>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 min-h-[10.75rem]">
+                        {isReady
+                            ? (data.action_totals || []).map((row) => (
+                                <SmallTotalCard key={row.action} label={row.label} count={row.count} />
+                            ))
+                            : Array.from({ length: ACTION_SHELL_COUNT }).map((_, idx) => (
+                                <SmallTotalCard key={`action-skel-${idx}`} label={<SkeletonLine className="h-4 w-28" />} />
+                            ))
+                        }
+                        {isReady && (data.action_totals || []).length < ACTION_SHELL_COUNT &&
+                            Array.from({ length: ACTION_SHELL_COUNT - (data.action_totals || []).length }).map((_, idx) => (
+                                <div key={`action-pad-${idx}`} className="invisible">
+                                    <SmallTotalCard label="." count={0} />
                                 </div>
                             ))}
+                    </div>
+                </section>
+
+                <DeferredMount
+                    when={!!chartSeries}
+                    className="space-y-6"
+                    minHeightClassName="min-h-[120rem]"
+                    placeholder={
+                        <div className="space-y-6" aria-hidden="true">
+                            {Array.from({ length: chartShellCount }).map((_, idx) => (
+                                <section key={`chart-shell-${idx}`} className="min-h-[18rem]">
+                                    <div className="mb-1">
+                                        <SkeletonLine className="h-5 w-56" />
+                                    </div>
+                                    <div className="mb-3">
+                                        <SkeletonLine className="h-3 w-[min(40rem,90%)]" />
+                                    </div>
+                                    <div className="min-w-0 overflow-x-auto rounded-lg border border-slate-200/80 bg-xu-page/30 p-4 shadow-inner">
+                                        <div className="h-40 sm:h-44 w-full animate-pulse rounded bg-slate-200/50" />
+                                    </div>
+                                </section>
+                            ))}
                         </div>
-                    </section>
-                    {chartSeries && (
-                        <div className="space-y-6">
-                            <charts.ChartBlock
-                                title="Reservations by college/office"
-                                subtitle="Approved and other statuses in range, grouped by requester college or office."
-                                empty={chartSeries.collegeOffice.length === 0}
-                            >
-                                <charts.HorizontalBarChart items={chartSeries.collegeOffice} />
-                            </charts.ChartBlock>
-                            <charts.ChartBlock
-                                title="Student – by college"
-                                subtitle="Reservations from student accounts, grouped by saved college."
-                                empty={chartSeries.studentCollege.length === 0}
-                            >
-                                <charts.CategoryColumnChart items={chartSeries.studentCollege} />
-                            </charts.ChartBlock>
-                            <charts.ChartBlock
-                                title="Employee/Staff – by office or department"
-                                subtitle="Reservations from faculty/staff accounts, grouped by saved office or department."
-                                empty={chartSeries.facultyOffice.length === 0}
-                            >
-                                <charts.HorizontalBarChart items={chartSeries.facultyOffice} variant="secondary" />
-                            </charts.ChartBlock>
-                            <charts.ChartBlock
-                                title="Student – by year level"
-                                subtitle="Distribution of student reservations by year level (donut when there are few categories)."
-                                empty={chartSeries.yearLevel.length === 0}
-                            >
-                                {chartSeries.yearLevel.length <= 8 ? (
-                                    <charts.DonutChart items={chartSeries.yearLevel} />
-                                ) : (
-                                    <charts.CategoryColumnChart items={chartSeries.yearLevel} />
-                                )}
-                            </charts.ChartBlock>
-                            <charts.ChartBlock
-                                title="Room utilization"
-                                subtitle="Approved reservations per space."
-                                empty={chartSeries.rooms.length === 0}
-                            >
-                                <charts.HorizontalBarChart items={chartSeries.rooms} />
-                            </charts.ChartBlock>
-                            <charts.ChartBlock
-                                title="Peak hours"
-                                subtitle="Approved reservations by reservation start hour, full day (00:00–23:00, library timezone)."
-                                empty={charts.peakHoursSeriesIsEmpty(chartSeries.peakFull)}
-                            >
-                                <div className="max-h-[min(70vh,28rem)] overflow-y-auto pr-1">
-                                    <charts.HorizontalBarChart
-                                        items={chartSeries.peakFull}
-                                        compact
-                                        labelClassName="font-mono tabular-nums text-slate-800"
-                                        labelColClassName="w-[4.75rem] sm:w-[5.25rem] shrink-0"
-                                    />
-                                </div>
-                            </charts.ChartBlock>
-                        </div>
-                    )}
-                    <section>
-                        <h2 className="font-semibold text-xu-primary font-serif mb-2">Recent activity</h2>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
-                                <thead className="bg-xu-primary/5 text-xu-primary">
-                                    <tr>
-                                        <th className="px-3 py-2 text-left">When</th>
-                                        <th className="px-3 py-2 text-left">Action</th>
-                                        <th className="px-3 py-2 text-left">Actor</th>
-                                        <th className="px-3 py-2 text-left">Requester</th>
-                                        <th className="px-3 py-2 text-left">Requester affiliation</th>
-                                        <th className="px-3 py-2 text-left">Space</th>
-                                        <th className="px-3 py-2 text-left">Note</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(data.recent_activity || []).length === 0 ? (
+                    }
+                >
+                    <>
+                        <charts.ChartBlock
+                            title="Reservations by college/office"
+                            subtitle="Approved and other statuses in range, grouped by requester college or office."
+                            empty={chartSeries.collegeOffice.length === 0}
+                        >
+                            <charts.HorizontalBarChart items={chartSeries.collegeOffice} />
+                        </charts.ChartBlock>
+                        <charts.ChartBlock
+                            title="Student – by college"
+                            subtitle="Reservations from student accounts, grouped by saved college."
+                            empty={chartSeries.studentCollege.length === 0}
+                        >
+                            <charts.CategoryColumnChart items={chartSeries.studentCollege} />
+                        </charts.ChartBlock>
+                        <charts.ChartBlock
+                            title="Employee/Staff – by office or department"
+                            subtitle="Reservations from faculty/staff accounts, grouped by saved office or department."
+                            empty={chartSeries.facultyOffice.length === 0}
+                        >
+                            <charts.HorizontalBarChart items={chartSeries.facultyOffice} variant="secondary" />
+                        </charts.ChartBlock>
+                        <charts.ChartBlock
+                            title="Student – by year level"
+                            subtitle="Distribution of student reservations by year level (donut when there are few categories)."
+                            empty={chartSeries.yearLevel.length === 0}
+                        >
+                            {chartSeries.yearLevel.length <= 8 ? (
+                                <charts.DonutChart items={chartSeries.yearLevel} />
+                            ) : (
+                                <charts.CategoryColumnChart items={chartSeries.yearLevel} />
+                            )}
+                        </charts.ChartBlock>
+                        <charts.ChartBlock
+                            title="Room utilization"
+                            subtitle="Approved reservations per space."
+                            empty={chartSeries.rooms.length === 0}
+                        >
+                            <charts.HorizontalBarChart items={chartSeries.rooms} />
+                        </charts.ChartBlock>
+                        <charts.ChartBlock
+                            title="Peak hours"
+                            subtitle="Approved reservations by reservation start hour, full day (00:00–23:00, library timezone)."
+                            empty={charts.peakHoursSeriesIsEmpty(chartSeries.peakFull)}
+                        >
+                            <div className="max-h-[min(70vh,28rem)] overflow-y-auto pr-1">
+                                <charts.HorizontalBarChart
+                                    items={chartSeries.peakFull}
+                                    compact
+                                    labelClassName="font-mono tabular-nums text-slate-800"
+                                    labelColClassName="w-[4.75rem] sm:w-[5.25rem] shrink-0"
+                                />
+                            </div>
+                        </charts.ChartBlock>
+                    </>
+                </DeferredMount>
+
+                <section>
+                    <h2 className="font-semibold text-xu-primary font-serif mb-2">Recent activity</h2>
+                    <div className="overflow-x-auto min-h-[15rem]">
+                        <table className="min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+                            <thead className="bg-xu-primary/5 text-xu-primary">
+                                <tr>
+                                    <th className="px-3 py-2 text-left">When</th>
+                                    <th className="px-3 py-2 text-left">Action</th>
+                                    <th className="px-3 py-2 text-left">Actor</th>
+                                    <th className="px-3 py-2 text-left">Requester</th>
+                                    <th className="px-3 py-2 text-left">Requester affiliation</th>
+                                    <th className="px-3 py-2 text-left">Space</th>
+                                    <th className="px-3 py-2 text-left">Note</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {isReady ? (
+                                    (data.recent_activity || []).length === 0 ? (
                                         <tr><td className="px-3 py-2 text-slate-500" colSpan={7}>No activity in period.</td></tr>
                                     ) : (
                                         (data.recent_activity || []).map((row) => (
@@ -245,13 +330,25 @@ export default function AdminReports() {
                                                 <td className="px-3 py-2">{row.notes || '-'}</td>
                                             </tr>
                                         ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                </div>
-            )}
+                                    )
+                                ) : (
+                                    Array.from({ length: ACTIVITY_SHELL_ROWS }).map((_, idx) => (
+                                        <tr key={`act-skel-${idx}`} className="border-t border-slate-200">
+                                            <td className="px-3 py-2"><SkeletonLine className="h-4 w-24" /></td>
+                                            <td className="px-3 py-2"><SkeletonLine className="h-4 w-28" /></td>
+                                            <td className="px-3 py-2"><SkeletonLine className="h-4 w-24" /></td>
+                                            <td className="px-3 py-2"><SkeletonLine className="h-4 w-24" /></td>
+                                            <td className="px-3 py-2"><SkeletonLine className="h-4 w-36" /></td>
+                                            <td className="px-3 py-2"><SkeletonLine className="h-4 w-28" /></td>
+                                            <td className="px-3 py-2"><SkeletonLine className="h-4 w-32" /></td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
         </div>
     );
 }

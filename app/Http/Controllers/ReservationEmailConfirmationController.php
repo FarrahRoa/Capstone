@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\ReservationPendingApprovalAdminMail;
+use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
 use App\Models\Reservation;
 use App\Models\User;
 use Illuminate\Http\Request;

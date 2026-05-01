@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\Admin\InvitePortalRoleRequest;
-use App\Mail\LibrarianInviteMail;
+use App\Http\Requests\Admin\InvitePortalRoleRequest;
+use App\Mail\Admin\LibrarianInviteMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\ApiResponse;

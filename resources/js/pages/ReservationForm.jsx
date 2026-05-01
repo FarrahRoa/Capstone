@@ -23,8 +23,12 @@ function initialDateFromParams(dateParam) {
     return manilaYmdFromInstant(new Date());
 }
 
+/** Staff portal roles use the same /reserve page with visible time sublabels for accessibility audits. */
+const STAFF_PORTAL_ROLE_SLUGS = new Set(['admin', 'librarian', 'student_assistant']);
+
 export default function ReservationForm() {
     const { user } = useAuth();
+    const visibleReservationTimeLabels = STAFF_PORTAL_ROLE_SLUGS.has((user?.role?.slug || '').toLowerCase());
     const [searchParams] = useSearchParams();
     const spaceId = searchParams.get('space_id');
     const dateParam = searchParams.get('date');
@@ -298,12 +302,19 @@ export default function ReservationForm() {
             )}
             <form onSubmit={handleSubmit} className={`min-w-0 space-y-4 p-4 sm:p-6 ${ui.cardFlat}`}>
                 {error && <div className="text-red-700 text-sm bg-red-50 border border-red-200 p-3 rounded-lg">{error}</div>}
-                <p className="text-xs text-slate-500 -mt-1 mb-1">
+                <p id="reserve-timezone-hint" className="text-xs text-slate-500 -mt-1 mb-1">
                     Date and times are in Philippines civil time ({BOOKING_TIMEZONE} / PHT), matching the server.
                 </p>
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Room *</label>
-                    <select value={spaceIdVal} onChange={(e) => setSpaceIdVal(e.target.value)} required className={`w-full ${ui.select}`}>
+                    <label htmlFor="reserve-room" className="block text-sm font-medium text-slate-700 mb-1">Room *</label>
+                    <select
+                        id="reserve-room"
+                        value={spaceIdVal}
+                        onChange={(e) => setSpaceIdVal(e.target.value)}
+                        required
+                        className={`w-full ${ui.select}`}
+                        aria-describedby="reserve-timezone-hint"
+                    >
                         <option value="">Select room</option>
                         {spaces.map((s) => {
                             const restriction = getSpaceRestrictionLabel(s);
@@ -327,8 +338,9 @@ export default function ReservationForm() {
                     )}
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Date *</label>
+                    <label htmlFor="reserve-date" className="block text-sm font-medium text-slate-700 mb-1">Date *</label>
                     <input
+                        id="reserve-date"
                         type="date"
                         value={bookingKind === 'avr_range' ? rangeStartDate : date}
                         onChange={(e) => {
@@ -338,44 +350,54 @@ export default function ReservationForm() {
                         }}
                         required
                         className={ui.input}
+                        aria-describedby="reserve-timezone-hint"
                     />
                 </div>
                 {bookingKind === 'avr_range' ? (
                     <>
                         <div className="grid grid-cols-1 gap-4 min-[520px]:grid-cols-2">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Start time *</label>
+                            <fieldset aria-describedby="reserve-timezone-hint">
+                                <legend className="block text-sm font-medium text-slate-700 mb-1">Start time *</legend>
                                 <HalfHourWallClockSelect
                                     idPrefix="res-range-start"
+                                    hourLabel="Start time, hour"
+                                    minuteLabel="Start time, minute"
+                                    visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeStartTime}
                                     onChange={setRangeStartTime}
                                 />
-                            </div>
+                            </fieldset>
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">End date *</label>
+                                <label htmlFor="reserve-end-date" className="block text-sm font-medium text-slate-700 mb-1">End date *</label>
                                 <input
+                                    id="reserve-end-date"
                                     type="date"
                                     value={rangeEndDate}
                                     onChange={(e) => setRangeEndDate(e.target.value)}
                                     required
                                     className={ui.input}
+                                    aria-describedby="reserve-timezone-hint"
                                 />
                             </div>
                         </div>
                         <div className="grid grid-cols-1 gap-4 min-[520px]:grid-cols-2">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">End time *</label>
+                            <fieldset aria-describedby="reserve-timezone-hint">
+                                <legend className="block text-sm font-medium text-slate-700 mb-1">End time *</legend>
                                 <HalfHourWallClockSelect
                                     idPrefix="res-range-end"
+                                    hourLabel="End time, hour"
+                                    minuteLabel="End time, minute"
+                                    visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeEndTime}
                                     onChange={setRangeEndTime}
                                 />
-                            </div>
+                            </fieldset>
                             <div className="hidden min-[520px]:block" aria-hidden="true" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Reservation title *</label>
+                            <label htmlFor="reserve-event-title" className="block text-sm font-medium text-slate-700 mb-1">Reservation title *</label>
                             <input
+                                id="reserve-event-title"
                                 type="text"
                                 value={eventTitle}
                                 onChange={(e) => setEventTitle(e.target.value)}
@@ -385,10 +407,11 @@ export default function ReservationForm() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                            <label htmlFor="reserve-event-description" className="block text-sm font-medium text-slate-700 mb-1">
                                 Event description / justification / notes (optional)
                             </label>
                             <textarea
+                                id="reserve-event-description"
                                 value={eventDescription}
                                 onChange={(e) => setEventDescription(e.target.value)}
                                 rows={4}
@@ -397,8 +420,9 @@ export default function ReservationForm() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Number of participants *</label>
+                            <label htmlFor="reserve-participant-count" className="block text-sm font-medium text-slate-700 mb-1">Number of participants *</label>
                             <input
+                                id="reserve-participant-count"
                                 type="number"
                                 min="1"
                                 step="1"
@@ -413,26 +437,33 @@ export default function ReservationForm() {
                 ) : bookingKind === 'half_hour_details' ? (
                     <>
                         <div className="grid grid-cols-1 gap-4 min-[520px]:grid-cols-2">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Start time *</label>
+                            <fieldset aria-describedby="reserve-timezone-hint">
+                                <legend className="block text-sm font-medium text-slate-700 mb-1">Start time *</legend>
                                 <HalfHourWallClockSelect
                                     idPrefix="res-details-start"
+                                    hourLabel="Start time, hour"
+                                    minuteLabel="Start time, minute"
+                                    visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeStartTime}
                                     onChange={setRangeStartTime}
                                 />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">End time *</label>
+                            </fieldset>
+                            <fieldset aria-describedby="reserve-timezone-hint">
+                                <legend className="block text-sm font-medium text-slate-700 mb-1">End time *</legend>
                                 <HalfHourWallClockSelect
                                     idPrefix="res-details-end"
+                                    hourLabel="End time, hour"
+                                    minuteLabel="End time, minute"
+                                    visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeEndTime}
                                     onChange={setRangeEndTime}
                                 />
-                            </div>
+                            </fieldset>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Reservation title *</label>
+                            <label htmlFor="reserve-event-title" className="block text-sm font-medium text-slate-700 mb-1">Reservation title *</label>
                             <input
+                                id="reserve-event-title"
                                 type="text"
                                 value={eventTitle}
                                 onChange={(e) => setEventTitle(e.target.value)}
@@ -442,10 +473,11 @@ export default function ReservationForm() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                            <label htmlFor="reserve-event-description" className="block text-sm font-medium text-slate-700 mb-1">
                                 Description / justification / notes (optional)
                             </label>
                             <textarea
+                                id="reserve-event-description"
                                 value={eventDescription}
                                 onChange={(e) => setEventDescription(e.target.value)}
                                 rows={4}
@@ -454,8 +486,9 @@ export default function ReservationForm() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Number of participants *</label>
+                            <label htmlFor="reserve-participant-count" className="block text-sm font-medium text-slate-700 mb-1">Number of participants *</label>
                             <input
+                                id="reserve-participant-count"
                                 type="number"
                                 min="1"
                                 step="1"
@@ -470,26 +503,32 @@ export default function ReservationForm() {
                 ) : (
                     <>
                         <div className="grid grid-cols-1 gap-4 min-[520px]:grid-cols-2">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Start time *</label>
+                            <fieldset aria-describedby="reserve-timezone-hint">
+                                <legend className="block text-sm font-medium text-slate-700 mb-1">Start time *</legend>
                                 <HalfHourWallClockSelect
                                     idPrefix="res-standard-start"
+                                    hourLabel="Start time, hour"
+                                    minuteLabel="Start time, minute"
+                                    visibleFieldLabels={visibleReservationTimeLabels}
                                     value={startTime}
                                     onChange={setStartTime}
                                 />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">End time *</label>
+                            </fieldset>
+                            <fieldset aria-describedby="reserve-timezone-hint">
+                                <legend className="block text-sm font-medium text-slate-700 mb-1">End time *</legend>
                                 <HalfHourWallClockSelect
                                     idPrefix="res-standard-end"
+                                    hourLabel="End time, hour"
+                                    minuteLabel="End time, minute"
+                                    visibleFieldLabels={visibleReservationTimeLabels}
                                     value={endTime}
                                     onChange={setEndTime}
                                 />
-                            </div>
+                            </fieldset>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Purpose (optional)</label>
-                            <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={3} className={ui.input} placeholder="Brief purpose of use" />
+                            <label htmlFor="reserve-purpose" className="block text-sm font-medium text-slate-700 mb-1">Purpose (optional)</label>
+                            <textarea id="reserve-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={3} className={ui.input} placeholder="Brief purpose of use" />
                         </div>
                     </>
                 )}

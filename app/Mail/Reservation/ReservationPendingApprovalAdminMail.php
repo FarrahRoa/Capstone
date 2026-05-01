@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Mail;
+namespace App\Mail\Reservation;
 
 use App\Models\Reservation;
 use Illuminate\Bus\Queueable;
@@ -9,7 +9,7 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class ReservationApprovedMail extends Mailable
+class ReservationPendingApprovalAdminMail extends Mailable
 {
     use Queueable, SerializesModels;
 
@@ -20,7 +20,7 @@ class ReservationApprovedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Library reservation approved – ' . $this->reservation->reservation_number,
+            subject: 'New reservation pending approval',
             from: config('mail.from.address'),
         );
     }
@@ -28,7 +28,8 @@ class ReservationApprovedMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'emails.reservation-approved',
+            view: 'emails.admin-reservation-pending-approval',
         );
     }
 }
+

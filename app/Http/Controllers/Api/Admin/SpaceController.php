@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\Admin\StoreSpaceRequest;
-use App\Http\Requests\Api\Admin\UpdateSpaceRequest;
+use App\Http\Requests\Admin\StoreSpaceRequest;
+use App\Http\Requests\Admin\UpdateSpaceRequest;
 use App\Models\Space;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;

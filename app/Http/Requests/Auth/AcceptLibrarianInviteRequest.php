@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Requests\Api;
+namespace App\Http\Requests\Auth;
 
 use App\Support\AuthEmail;
 use Illuminate\Foundation\Http\FormRequest;
 
-class VerifyOtpRequest extends FormRequest
+class AcceptLibrarianInviteRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -25,7 +25,9 @@ class VerifyOtpRequest extends FormRequest
     {
         return [
             'email' => ['required', 'email:rfc'],
-            'otp' => ['required', 'digits:6'],
+            'token' => ['required', 'string', 'min:32', 'max:512'],
+            'password' => ['required', 'string', 'min:10', 'max:255', 'confirmed'],
         ];
     }
 }
+

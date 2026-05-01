@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Mail;
+namespace App\Mail\Admin;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -8,18 +8,21 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class OtpMail extends Mailable
+class LibrarianInviteMail extends Mailable
 {
     use Queueable, SerializesModels;
 
     public function __construct(
-        public string $otp
+        public string $email,
+        public string $roleName,
+        public string $temporaryPassword,
+        public string $adminSignInUrl,
     ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your XU Library Login OTP',
+            subject: 'XU Library reservation system — admin access invitation',
             from: config('mail.from.address'),
             replyTo: [config('mail.from.address')],
         );
@@ -28,7 +31,8 @@ class OtpMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'emails.otp',
+            view: 'emails.librarian-invite',
         );
     }
 }
+

@@ -1,14 +1,15 @@
 <?php
 
-namespace App\Http\Requests\Api;
+namespace App\Http\Requests\Reservation;
 
 use App\Models\Reservation;
 use App\Models\Space;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
-class UpdateReservationRequest extends FormRequest
+class StoreReservationRequest extends FormRequest
 {
     /** @var int[] */
     private const ALLOWED_MINUTES = [0, 30];
@@ -22,8 +23,12 @@ class UpdateReservationRequest extends FormRequest
     {
         return [
             'space_id' => 'required|exists:spaces,id',
-            'start_at' => 'required|date',
+            'start_at' => 'required|date|after:now',
             'end_at' => 'required|date|after:start_at',
+            'purpose' => 'nullable|string|max:1000',
+            'event_title' => 'nullable|string|max:255',
+            'event_description' => 'nullable|string|max:5000',
+            'participant_count' => 'nullable|integer|min:1|max:10000',
         ];
     }
 
@@ -33,10 +38,23 @@ class UpdateReservationRequest extends FormRequest
             if (!$this->user()) {
                 return;
             }
+
+            $tz = (string) config('app.timezone');
+            $activeCount = Reservation::query()
+                ->where('user_id', $this->user()->id)
+                ->whereIn('status', Reservation::activeUserLimitStatuses())
+                ->where('end_at', '>', Carbon::now($tz))
+                ->count();
+
+            if ($activeCount >= 3) {
+                throw ValidationException::withMessages([
+                    'reservation' => ['You already have 3 active reservations. Cancel or complete an existing reservation before making another.'],
+                ]);
+            }
+
             if ($validator->errors()->has('space_id')) {
                 return;
             }
-
             $space = Space::find($this->input('space_id'));
             if (!$space) {
                 return;
@@ -44,6 +62,7 @@ class UpdateReservationRequest extends FormRequest
             $blocked = $this->user()->roomReservationBlockedMessage($space);
             if ($blocked !== null) {
                 $validator->errors()->add('space_id', $blocked);
+
                 return;
             }
 
@@ -60,7 +79,6 @@ class UpdateReservationRequest extends FormRequest
             }
 
             try {
-                $tz = (string) config('app.timezone');
                 $start = Carbon::parse((string) $this->input('start_at'), $tz);
                 $end = Carbon::parse((string) $this->input('end_at'), $tz);
             } catch (Throwable) {
@@ -70,38 +88,52 @@ class UpdateReservationRequest extends FormRequest
             $todayStart = Carbon::now($tz)->startOfDay();
             if ($start->copy()->startOfDay()->lt($todayStart)) {
                 $validator->errors()->add('start_at', 'Past dates are not reservable.');
-                return;
-            }
 
-            if ($end->lte(Carbon::now($tz))) {
-                $validator->errors()->add('end_at', 'Reservation must be in the future.');
                 return;
             }
 
             if ((int) $start->second !== 0 || (int) $end->second !== 0) {
                 $validator->errors()->add('slot', 'Seconds must be :00.');
+
                 return;
             }
 
             if (! in_array((int) $start->minute, self::ALLOWED_MINUTES, true)) {
                 $validator->errors()->add('start_at', 'Start time minutes must be :00 or :30.');
+
                 return;
             }
 
             if (! in_array((int) $end->minute, self::ALLOWED_MINUTES, true)) {
                 $validator->errors()->add('end_at', 'End time minutes must be :00 or :30.');
+
                 return;
             }
 
-            $reservation = $this->route('reservation');
-            if ($reservation instanceof Reservation) {
-                $reservation->loadMissing('space');
-                if ($reservation->space?->isConfabAssignmentPool()
-                    && (int) $this->input('space_id') !== (int) $reservation->space_id) {
-                    $validator->errors()->add(
-                        'space_id',
-                        'General confab reservations keep the same slot until a librarian assigns a specific room at approval.'
-                    );
+            $needsEventDetails = in_array((string) $space->slug, ['avr', 'lobby'], true)
+                || in_array((string) $space->type, [Space::TYPE_CONFAB, Space::TYPE_MEDICAL_CONFAB, 'lecture'], true);
+
+            if ($needsEventDetails) {
+                if (trim((string) $this->input('event_title', '')) === '') {
+                    $validator->errors()->add('event_title', 'Reservation title is required for this space.');
+
+                    return;
+                }
+                if ((int) $this->input('participant_count', 0) <= 0) {
+                    $validator->errors()->add('participant_count', 'Participant count is required for this space.');
+
+                    return;
+                }
+            }
+
+            if (! $space->isConfabAssignmentPool()) {
+                $conflict = Reservation::conflictsExist(
+                    (int) $this->input('space_id'),
+                    $this->input('start_at'),
+                    $this->input('end_at')
+                );
+                if ($conflict) {
+                    $validator->errors()->add('slot', 'Selected time slot is not available.');
                 }
             }
         });

@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\ReservationVerificationMailException;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\StoreReservationRequest;
-use App\Http\Requests\Api\UpdateReservationRequest;
-use App\Mail\ReservationPendingApprovalAdminMail;
-use App\Mail\ReservationVerificationMail;
+use App\Http\Requests\Reservation\StoreReservationRequest;
+use App\Http\Requests\Reservation\UpdateReservationRequest;
+use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
+use App\Mail\Reservation\ReservationVerificationMail;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Space;

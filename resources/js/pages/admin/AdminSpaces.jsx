@@ -180,7 +180,7 @@ export default function AdminSpaces() {
     return (
         <div>
             <h1 className={`${ui.pageTitle} mb-2`}>Space management</h1>
-            <p className="text-sm text-slate-600 mb-4">
+            <p className="text-sm text-slate-700 mb-4">
                 Create and edit rooms. Types <strong>Medical Confab</strong> and <strong>Boardroom</strong> use extra reservation eligibility rules on the backend.
             </p>
 
@@ -199,8 +199,9 @@ export default function AdminSpaces() {
             <div className="mb-4 flex flex-wrap gap-2 items-end">
                 <form onSubmit={applySearch} className="flex flex-wrap gap-2 items-end">
                     <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Search</label>
+                        <label htmlFor="admin-spaces-search" className="block text-xs font-medium text-slate-700 mb-1">Search</label>
                         <input
+                            id="admin-spaces-search"
                             type="text"
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
@@ -213,8 +214,9 @@ export default function AdminSpaces() {
                     </button>
                 </form>
                 <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
+                    <label htmlFor="admin-spaces-type-filter" className="block text-xs font-medium text-slate-700 mb-1">Type</label>
                     <select
+                        id="admin-spaces-type-filter"
                         value={typeFilter}
                         onChange={(e) => setTypeFilter(e.target.value)}
                         className={ui.select}
@@ -244,8 +246,9 @@ export default function AdminSpaces() {
                 >
                     <h2 className="font-semibold text-xu-primary font-serif">Create space</h2>
                     <div>
-                        <label className="block text-xs text-slate-600 mb-1">Name *</label>
+                        <label htmlFor="admin-spaces-create-name" className="block text-xs font-medium text-slate-700 mb-1">Name *</label>
                         <input
+                            id="admin-spaces-create-name"
                             required
                             value={createForm.name}
                             onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
@@ -254,8 +257,9 @@ export default function AdminSpaces() {
                         {formErrors.name && <p className="text-red-600 text-xs mt-1">{formErrors.name[0]}</p>}
                     </div>
                     <div>
-                        <label className="block text-xs text-slate-600 mb-1">Slug * (URL-safe)</label>
+                        <label htmlFor="admin-spaces-create-slug" className="block text-xs font-medium text-slate-700 mb-1">Slug * (URL-safe)</label>
                         <input
+                            id="admin-spaces-create-slug"
                             required
                             value={createForm.slug}
                             onChange={(e) => setCreateForm((f) => ({ ...f, slug: e.target.value }))}
@@ -264,8 +268,9 @@ export default function AdminSpaces() {
                         {formErrors.slug && <p className="text-red-600 text-xs mt-1">{formErrors.slug[0]}</p>}
                     </div>
                     <div>
-                        <label className="block text-xs text-slate-600 mb-1">Type *</label>
+                        <label htmlFor="admin-spaces-create-type" className="block text-xs font-medium text-slate-700 mb-1">Type *</label>
                         <select
+                            id="admin-spaces-create-type"
                             value={createForm.type}
                             onChange={(e) => setCreateForm((f) => ({ ...f, type: e.target.value }))}
                             className="w-full rounded border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-xu-secondary/35 focus:border-xu-secondary"
@@ -277,8 +282,9 @@ export default function AdminSpaces() {
                         {formErrors.type && <p className="text-red-600 text-xs mt-1">{formErrors.type[0]}</p>}
                     </div>
                     <div>
-                        <label className="block text-xs text-slate-600 mb-1">Capacity</label>
+                        <label htmlFor="admin-spaces-create-capacity" className="block text-xs font-medium text-slate-700 mb-1">Capacity</label>
                         <input
+                            id="admin-spaces-create-capacity"
                             type="number"
                             min={1}
                             value={createForm.capacity}
@@ -305,7 +311,7 @@ export default function AdminSpaces() {
                 </form>
             )}
 
-            {loading && <p className="text-slate-600">Loading…</p>}
+            {loading && <p className="text-slate-700">Loading…</p>}
 
             {!loading && (
                 <div className="overflow-x-auto bg-white rounded-lg border border-slate-200 shadow-sm">
@@ -324,7 +330,7 @@ export default function AdminSpaces() {
                         <tbody>
                             {spaces.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-3 py-4 text-slate-500">No spaces match.</td>
+                                    <td colSpan={7} className="px-3 py-4 text-slate-700">No spaces match.</td>
                                 </tr>
                             )}
                             {spaces.map((s) => {
@@ -339,6 +345,7 @@ export default function AdminSpaces() {
                                                     value={editDraft.name}
                                                     onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
                                                     disabled={busy}
+                                                    aria-label={`Space name for ${s.name}`}
                                                     className="w-full rounded border border-slate-200 px-2 py-1 focus:ring-2 focus:ring-xu-secondary/30 focus:border-xu-secondary"
                                                 />
                                             ) : (
@@ -351,6 +358,7 @@ export default function AdminSpaces() {
                                                     value={editDraft.slug}
                                                     onChange={(e) => setEditDraft((d) => ({ ...d, slug: e.target.value }))}
                                                     disabled={busy}
+                                                    aria-label={`Space slug for ${s.name}`}
                                                     className="w-full rounded border border-slate-200 px-2 py-1 focus:ring-2 focus:ring-xu-secondary/30 focus:border-xu-secondary"
                                                 />
                                             ) : (
@@ -359,16 +367,22 @@ export default function AdminSpaces() {
                                         </td>
                                         <td className="px-3 py-2 align-top">
                                             {editing ? (
-                                                <select
-                                                    value={editDraft.type}
-                                                    onChange={(e) => setEditDraft((d) => ({ ...d, type: e.target.value }))}
-                                                    disabled={busy}
-                                                    className="rounded border border-slate-200 px-2 py-1 focus:ring-2 focus:ring-xu-secondary/30 focus:border-xu-secondary"
-                                                >
-                                                    {TYPE_OPTIONS.map((o) => (
-                                                        <option key={o.value} value={o.value}>{o.label}</option>
-                                                    ))}
-                                                </select>
+                                                <>
+                                                    <label htmlFor={`admin-spaces-edit-type-${s.id}`} className="sr-only">
+                                                        Type for {s.name}
+                                                    </label>
+                                                    <select
+                                                        id={`admin-spaces-edit-type-${s.id}`}
+                                                        value={editDraft.type}
+                                                        onChange={(e) => setEditDraft((d) => ({ ...d, type: e.target.value }))}
+                                                        disabled={busy}
+                                                        className="rounded border border-slate-200 px-2 py-1 focus:ring-2 focus:ring-xu-secondary/30 focus:border-xu-secondary"
+                                                    >
+                                                        {TYPE_OPTIONS.map((o) => (
+                                                            <option key={o.value} value={o.value}>{o.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </>
                                             ) : (
                                                 typeLabel(s.type)
                                             )}
@@ -381,6 +395,7 @@ export default function AdminSpaces() {
                                                     value={editDraft.capacity}
                                                     onChange={(e) => setEditDraft((d) => ({ ...d, capacity: e.target.value }))}
                                                     disabled={busy}
+                                                    aria-label={`Space capacity for ${s.name}`}
                                                     className="w-20 rounded border border-slate-200 px-2 py-1 focus:ring-2 focus:ring-xu-secondary/30 focus:border-xu-secondary"
                                                 />
                                             ) : (
@@ -394,9 +409,10 @@ export default function AdminSpaces() {
                                                     checked={editDraft.is_active}
                                                     onChange={(e) => setEditDraft((d) => ({ ...d, is_active: e.target.checked }))}
                                                     disabled={busy}
+                                                    aria-label={`Space active toggle for ${s.name}`}
                                                 />
                                             ) : (
-                                                <span className={s.is_active ? 'text-green-700' : 'text-slate-500'}>
+                                                <span className={s.is_active ? 'text-green-800' : 'text-slate-700'}>
                                                     {s.is_active ? 'Yes' : 'No'}
                                                 </span>
                                             )}
@@ -407,7 +423,7 @@ export default function AdminSpaces() {
                                                     {restriction}
                                                 </span>
                                             ) : (
-                                                <span className="text-slate-400 text-xs">Standard</span>
+                                                <span className="text-slate-800 text-xs font-medium">Standard</span>
                                             )}
                                         </td>
                                         <td className="px-3 py-2 align-top whitespace-nowrap">

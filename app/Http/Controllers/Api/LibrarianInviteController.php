@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\AcceptLibrarianInviteRequest;
+use App\Http\Requests\Auth\AcceptLibrarianInviteRequest;
 use App\Models\User;
 use App\Support\ApiResponse;
 use App\Support\AuthEmail;

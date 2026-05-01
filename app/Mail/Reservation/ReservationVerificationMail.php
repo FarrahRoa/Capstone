@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Mail;
+namespace App\Mail\Reservation;
 
 use App\Models\Reservation;
 use Illuminate\Bus\Queueable;

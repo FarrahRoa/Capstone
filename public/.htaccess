@@ -9,7 +9,8 @@
         # Vite's hashes can include '-' / '_' (e.g. app-BmBjjO-B.js, vendor-react-N--QU9DW.js).
         # Some deployments may expose the Vite build assets at /assets/* instead of /build/assets/*.
         SetEnvIf Request_URI "^/(?:build/)?assets/.+-[A-Za-z0-9_-]{8,}\\.(?:(?:js|css)(?:\\.map)?|woff2?|ttf|eot|svg|png|jpe?g|gif|webp)$" xu_vite_hashed_asset
-        Header set Cache-Control "public, max-age=31536000, immutable" env=xu_vite_hashed_asset
+        # "always" ensures the header is present on 304 responses too (important for Lighthouse cache TTL audits).
+        Header always set Cache-Control "public, max-age=31536000, immutable" env=xu_vite_hashed_asset
     </IfModule>
 
     RewriteEngine On

@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\AdminLoginRequest;
-use App\Http\Requests\Api\CompleteProfileRequest;
-use App\Http\Requests\Api\LoginRequest;
-use App\Http\Requests\Api\ResendOtpRequest;
-use App\Http\Requests\Api\UpdateAccountRequest;
-use App\Http\Requests\Api\VerifyOtpRequest;
+use App\Http\Requests\Auth\AdminLoginRequest;
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\ResendOtpRequest;
+use App\Http\Requests\Auth\VerifyOtpRequest;
+use App\Http\Requests\User\CompleteProfileRequest;
+use App\Http\Requests\User\UpdateAccountRequest;
 use App\Support\AuthEmail;
-use App\Mail\OtpMail;
+use App\Mail\Auth\OtpMail;
 use App\Models\Role;
 use App\Models\TrustedDevice;
 use App\Models\User;

@@ -187,8 +187,9 @@ export default function AdminUsers() {
                 </p>
                 <form onSubmit={sendPortalRoleInvite} className="flex flex-wrap gap-2 items-end">
                     <div className="min-w-[18rem]">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">XU email</label>
+                        <label htmlFor="admin-users-invite-email" className="block text-xs font-medium text-slate-600 mb-1">XU email</label>
                         <input
+                            id="admin-users-invite-email"
                             type="email"
                             value={inviteEmail}
                             onChange={(e) => setInviteEmail(e.target.value)}
@@ -198,8 +199,9 @@ export default function AdminUsers() {
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
+                        <label htmlFor="admin-users-invite-role" className="block text-xs font-medium text-slate-600 mb-1">Role</label>
                         <select
+                            id="admin-users-invite-role"
                             value={inviteRoleSlug}
                             onChange={(e) => setInviteRoleSlug(e.target.value)}
                             className={ui.select}
@@ -221,8 +223,9 @@ export default function AdminUsers() {
 
             <form onSubmit={onSearchSubmit} className="mb-4 flex flex-wrap items-end gap-2">
                 <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Search name or email</label>
+                    <label htmlFor="admin-users-search" className="block text-xs font-medium text-slate-600 mb-1">Search name or email</label>
                     <input
+                        id="admin-users-search"
                         type="text"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
@@ -234,8 +237,9 @@ export default function AdminUsers() {
                     Search now
                 </button>
                 <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
+                    <label htmlFor="admin-users-role-filter" className="block text-xs font-medium text-slate-600 mb-1">Role</label>
                     <select
+                        id="admin-users-role-filter"
                         value={roleFilter}
                         onChange={(e) => {
                             setRoleFilter(e.target.value);
@@ -250,8 +254,9 @@ export default function AdminUsers() {
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Rows per page</label>
+                    <label htmlFor="admin-users-per-page" className="block text-xs font-medium text-slate-600 mb-1">Rows per page</label>
                     <select
+                        id="admin-users-per-page"
                         value={perPage}
                         onChange={(e) => {
                             setPerPage(Number(e.target.value));
@@ -318,7 +323,11 @@ export default function AdminUsers() {
                                             <td className="px-4 py-2 text-slate-700">{typeLabel}</td>
                                             <td className="px-4 py-2 text-slate-700">{u.college_office || '—'}</td>
                                             <td className="px-4 py-2 text-slate-700">
+                                                <label htmlFor={`admin-users-row-role-${u.id}`} className="sr-only">
+                                                    Role for {u.name}
+                                                </label>
                                                 <select
+                                                    id={`admin-users-row-role-${u.id}`}
                                                     value={u.role_id || ''}
                                                     disabled={busy}
                                                     onChange={(e) => updateRole(u, e.target.value)}
@@ -330,8 +339,12 @@ export default function AdminUsers() {
                                                 </select>
                                             </td>
                                             <td className="px-4 py-2">
+                                                <label htmlFor={`admin-users-med-confab-${u.id}`} className="sr-only">
+                                                    Med Confab eligibility for {u.name}
+                                                </label>
                                                 <input
                                                     type="checkbox"
+                                                    id={`admin-users-med-confab-${u.id}`}
                                                     checked={Boolean(u.med_confab_eligible)}
                                                     disabled={busy}
                                                     onChange={(e) => updateEligibility(u, 'med_confab_eligible', e.target.checked)}
@@ -339,8 +352,12 @@ export default function AdminUsers() {
                                                 />
                                             </td>
                                             <td className="px-4 py-2">
+                                                <label htmlFor={`admin-users-boardroom-${u.id}`} className="sr-only">
+                                                    Boardroom eligibility for {u.name}
+                                                </label>
                                                 <input
                                                     type="checkbox"
+                                                    id={`admin-users-boardroom-${u.id}`}
                                                     checked={Boolean(u.boardroom_eligible)}
                                                     disabled={busy}
                                                     onChange={(e) => updateEligibility(u, 'boardroom_eligible', e.target.checked)}
