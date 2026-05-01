@@ -90,10 +90,10 @@ export default function Login() {
                             />
                         </div>
                         <h1 className="mb-4 text-center sm:mb-5">
-                            <span className="block font-serif text-4xl font-bold leading-snug tracking-tight text-xu-secondary">
+                            <span className="block font-serif text-2xl font-bold leading-snug tracking-tight text-xu-secondary sm:text-3xl">
                                 Xavier University Library
                             </span>
-                            <span className="mt-2 block font-serif text-3xl font-bold tracking-tight text-xu-primary">
+                            <span className="mt-2 block font-serif text-xl font-bold tracking-tight text-xu-primary sm:text-2xl">
                                 Sign In
                             </span>
                         </h1>
