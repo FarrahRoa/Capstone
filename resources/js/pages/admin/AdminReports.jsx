@@ -238,61 +238,63 @@ export default function AdminReports() {
                         </div>
                     }
                 >
-                    <>
-                        <charts.ChartBlock
-                            title="Reservations by college/office"
-                            subtitle="Approved and other statuses in range, grouped by requester college or office."
-                            empty={chartSeries.collegeOffice.length === 0}
-                        >
-                            <charts.HorizontalBarChart items={chartSeries.collegeOffice} />
-                        </charts.ChartBlock>
-                        <charts.ChartBlock
-                            title="Student – by college"
-                            subtitle="Reservations from student accounts, grouped by saved college."
-                            empty={chartSeries.studentCollege.length === 0}
-                        >
-                            <charts.CategoryColumnChart items={chartSeries.studentCollege} />
-                        </charts.ChartBlock>
-                        <charts.ChartBlock
-                            title="Employee/Staff – by office or department"
-                            subtitle="Reservations from faculty/staff accounts, grouped by saved office or department."
-                            empty={chartSeries.facultyOffice.length === 0}
-                        >
-                            <charts.HorizontalBarChart items={chartSeries.facultyOffice} variant="secondary" />
-                        </charts.ChartBlock>
-                        <charts.ChartBlock
-                            title="Student – by year level"
-                            subtitle="Distribution of student reservations by year level (donut when there are few categories)."
-                            empty={chartSeries.yearLevel.length === 0}
-                        >
-                            {chartSeries.yearLevel.length <= 8 ? (
-                                <charts.DonutChart items={chartSeries.yearLevel} />
-                            ) : (
-                                <charts.CategoryColumnChart items={chartSeries.yearLevel} />
-                            )}
-                        </charts.ChartBlock>
-                        <charts.ChartBlock
-                            title="Room utilization"
-                            subtitle="Approved reservations per space."
-                            empty={chartSeries.rooms.length === 0}
-                        >
-                            <charts.HorizontalBarChart items={chartSeries.rooms} />
-                        </charts.ChartBlock>
-                        <charts.ChartBlock
-                            title="Peak hours"
-                            subtitle="Approved reservations by reservation start hour, full day (00:00–23:00, library timezone)."
-                            empty={charts.peakHoursSeriesIsEmpty(chartSeries.peakFull)}
-                        >
-                            <div className="max-h-[min(70vh,28rem)] overflow-y-auto pr-1">
-                                <charts.HorizontalBarChart
-                                    items={chartSeries.peakFull}
-                                    compact
-                                    labelClassName="font-mono tabular-nums text-slate-800"
-                                    labelColClassName="w-[4.75rem] sm:w-[5.25rem] shrink-0"
-                                />
-                            </div>
-                        </charts.ChartBlock>
-                    </>
+                    {chartSeries ? (
+                        <>
+                            <charts.ChartBlock
+                                title="Reservations by college/office"
+                                subtitle="Approved and other statuses in range, grouped by requester college or office."
+                                empty={chartSeries.collegeOffice.length === 0}
+                            >
+                                <charts.HorizontalBarChart items={chartSeries.collegeOffice} />
+                            </charts.ChartBlock>
+                            <charts.ChartBlock
+                                title="Student – by college"
+                                subtitle="Reservations from student accounts, grouped by saved college."
+                                empty={chartSeries.studentCollege.length === 0}
+                            >
+                                <charts.CategoryColumnChart items={chartSeries.studentCollege} />
+                            </charts.ChartBlock>
+                            <charts.ChartBlock
+                                title="Employee/Staff – by office or department"
+                                subtitle="Reservations from faculty/staff accounts, grouped by saved office or department."
+                                empty={chartSeries.facultyOffice.length === 0}
+                            >
+                                <charts.HorizontalBarChart items={chartSeries.facultyOffice} variant="secondary" />
+                            </charts.ChartBlock>
+                            <charts.ChartBlock
+                                title="Student – by year level"
+                                subtitle="Distribution of student reservations by year level (donut when there are few categories)."
+                                empty={chartSeries.yearLevel.length === 0}
+                            >
+                                {chartSeries.yearLevel.length <= 8 ? (
+                                    <charts.DonutChart items={chartSeries.yearLevel} />
+                                ) : (
+                                    <charts.CategoryColumnChart items={chartSeries.yearLevel} />
+                                )}
+                            </charts.ChartBlock>
+                            <charts.ChartBlock
+                                title="Room utilization"
+                                subtitle="Approved reservations per space."
+                                empty={chartSeries.rooms.length === 0}
+                            >
+                                <charts.HorizontalBarChart items={chartSeries.rooms} />
+                            </charts.ChartBlock>
+                            <charts.ChartBlock
+                                title="Peak hours"
+                                subtitle="Approved reservations by reservation start hour, full day (00:00–23:00, library timezone)."
+                                empty={charts.peakHoursSeriesIsEmpty(chartSeries.peakFull)}
+                            >
+                                <div className="max-h-[min(70vh,28rem)] overflow-y-auto pr-1">
+                                    <charts.HorizontalBarChart
+                                        items={chartSeries.peakFull}
+                                        compact
+                                        labelClassName="font-mono tabular-nums text-slate-800"
+                                        labelColClassName="w-[4.75rem] sm:w-[5.25rem] shrink-0"
+                                    />
+                                </div>
+                            </charts.ChartBlock>
+                        </>
+                    ) : null}
                 </DeferredMount>
 
                 <section>
