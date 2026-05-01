@@ -89,11 +89,11 @@ export default function Login() {
                                 className="mx-auto h-auto w-full max-w-[min(100%,16rem)] object-contain sm:max-w-[18rem]"
                             />
                         </div>
-                        <h1 className="mb-4 text-center sm:mb-5 sm:text-left">
-                            <span className="block text-[0.8125rem] font-semibold leading-snug text-xu-secondary">
+                        <h1 className="mb-4 text-center sm:mb-5">
+                            <span className="block font-serif text-4xl font-bold leading-snug tracking-tight text-xu-secondary">
                                 Xavier University Library
                             </span>
-                            <span className="mt-1.5 block font-serif text-3xl font-bold tracking-tight text-xu-primary">
+                            <span className="mt-2 block font-serif text-3xl font-bold tracking-tight text-xu-primary">
                                 Sign In
                             </span>
                         </h1>
