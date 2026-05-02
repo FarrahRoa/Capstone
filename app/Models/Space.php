@@ -80,7 +80,13 @@ class Space extends Model
     public function getImageUrlAttribute(): string
     {
         if ($this->image_path && Storage::disk('public')->exists($this->image_path)) {
-            return Storage::disk('public')->url($this->image_path);
+            $url = Storage::disk('public')->url($this->image_path);
+            $v = (int) ($this->updated_at?->timestamp ?? 0);
+            if ($v > 0) {
+                return $url.(str_contains($url, '?') ? '&' : '?').'v='.$v;
+            }
+
+            return $url;
         }
 
         return asset('images/library-space-placeholder.svg');
