@@ -17,6 +17,10 @@ class Reservation extends Model
     public const CLOUD_SYNC_ORIGIN_LOCAL_FALLBACK = 'local_fallback';
 
     public const STATUS_EMAIL_VERIFICATION_PENDING = 'email_verification_pending';
+
+    /** AVR/Lobby: user verified email; awaiting dean/office decision via email link (before librarian queue). */
+    public const STATUS_PENDING_DEAN_APPROVAL = 'pending_dean_approval';
+
     public const STATUS_PENDING_APPROVAL = 'pending_approval';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REJECTED = 'rejected';
@@ -29,6 +33,7 @@ class Reservation extends Model
 
     public const STATUS_LABELS = [
         self::STATUS_EMAIL_VERIFICATION_PENDING => 'Pending verification',
+        self::STATUS_PENDING_DEAN_APPROVAL => 'Pending dean/office approval',
         self::STATUS_PENDING_APPROVAL => 'Pending approval',
         self::STATUS_APPROVED => 'Approved',
         self::STATUS_REJECTED => 'Rejected',
@@ -44,6 +49,7 @@ class Reservation extends Model
     {
         return [
             self::STATUS_EMAIL_VERIFICATION_PENDING,
+            self::STATUS_PENDING_DEAN_APPROVAL,
             self::STATUS_PENDING_APPROVAL,
             self::STATUS_APPROVED,
             self::STATUS_REJECTED,
@@ -104,9 +110,11 @@ class Reservation extends Model
      * Allowed single-step transitions keyed by current status.
      *
      * Product truth (must match existing endpoints):
-     * - confirm-email: email_verification_pending → pending_approval (or → rejected if link expired)
+     * - confirm-email: email_verification_pending → pending_dean_approval (AVR/Lobby w/ mapping) or pending_approval
+     * - dean email POST: pending_dean_approval → pending_approval | rejected
      * - approve / override: pending_approval → approved
-     * - reject: pending_approval | email_verification_pending → rejected
+     * - reject (librarian): pending_approval | email_verification_pending → rejected
+     * - reject (dean email): pending_dean_approval → rejected
      * - cancel: any status except cancelled → cancelled (including rejected and approved)
      *
      * @return array<string, array<int, string>>
@@ -115,6 +123,12 @@ class Reservation extends Model
     {
         return [
             self::STATUS_EMAIL_VERIFICATION_PENDING => [
+                self::STATUS_PENDING_APPROVAL,
+                self::STATUS_PENDING_DEAN_APPROVAL,
+                self::STATUS_REJECTED,
+                self::STATUS_CANCELLED,
+            ],
+            self::STATUS_PENDING_DEAN_APPROVAL => [
                 self::STATUS_PENDING_APPROVAL,
                 self::STATUS_REJECTED,
                 self::STATUS_CANCELLED,
@@ -180,6 +194,7 @@ class Reservation extends Model
         return [
             self::STATUS_APPROVED,
             self::STATUS_PENDING_APPROVAL,
+            self::STATUS_PENDING_DEAN_APPROVAL,
             self::STATUS_EMAIL_VERIFICATION_PENDING,
         ];
     }
@@ -192,6 +207,7 @@ class Reservation extends Model
     public static function activeUserLimitStatuses(): array
     {
         return [
+            self::STATUS_PENDING_DEAN_APPROVAL,
             self::STATUS_PENDING_APPROVAL,
             self::STATUS_APPROVED,
         ];

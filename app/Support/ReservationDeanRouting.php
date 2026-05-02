@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Mail\Reservation\ReservationDeanReviewRequestMail;
 use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
 use App\Models\DeanEmailMapping;
 use App\Models\Reservation;
@@ -65,6 +66,82 @@ final class ReservationDeanRouting
                 : null,
             default => null,
         };
+    }
+
+    /**
+     * After the requester successfully verifies email: dean queue vs librarian queue.
+     */
+    public static function statusAfterRequesterConfirmsEmail(Reservation $reservation): string
+    {
+        return self::resolveActiveDeanMapping($reservation) !== null
+            ? Reservation::STATUS_PENDING_DEAN_APPROVAL
+            : Reservation::STATUS_PENDING_APPROVAL;
+    }
+
+    /**
+     * Staff who receive the librarian queue email (approve permission). Dean approver is excluded when they are also staff.
+     *
+     * @return array<string, string> normalized lowercase email => send address
+     */
+    public static function staffQueueApproverEmails(Reservation $reservation): array
+    {
+        $reservation->loadMissing('space', 'user');
+        $out = [];
+        foreach (User::with('role')->cursor() as $userRow) {
+            if ($userRow->role && $userRow->role->hasPermission('reservation.approve')) {
+                $e = trim((string) $userRow->email);
+                if ($e !== '') {
+                    $out[strtolower($e)] = $e;
+                }
+            }
+        }
+
+        $mapping = self::resolveActiveDeanMapping($reservation);
+        if ($mapping !== null) {
+            $dean = strtolower(trim((string) $mapping->approver_email));
+            if ($dean !== '' && isset($out[$dean])) {
+                unset($out[$dean]);
+            }
+        }
+
+        return $out;
+    }
+
+    public static function sendDeanReviewRequestEmail(Reservation $reservation): void
+    {
+        $reservation->loadMissing('space', 'user');
+        $mapping = self::resolveActiveDeanMapping($reservation);
+        if ($mapping === null) {
+            return;
+        }
+        $email = trim((string) $mapping->approver_email);
+        if ($email === '') {
+            return;
+        }
+        Mail::to($email)->send(new ReservationDeanReviewRequestMail($reservation));
+    }
+
+    public static function sendStaffLibrarianQueueNotifications(Reservation $reservation): void
+    {
+        foreach (self::staffQueueApproverEmails($reservation) as $email) {
+            Mail::to($email)->send(new ReservationPendingApprovalAdminMail($reservation));
+        }
+    }
+
+    /**
+     * Called immediately after status is set post email verification.
+     */
+    public static function dispatchPostUserVerificationNotifications(Reservation $reservation): void
+    {
+        $reservation->loadMissing('space', 'user');
+        if ($reservation->status === Reservation::STATUS_PENDING_DEAN_APPROVAL) {
+            self::sendDeanReviewRequestEmail($reservation);
+
+            return;
+        }
+        if ($reservation->status === Reservation::STATUS_PENDING_APPROVAL) {
+            self::sendStaffLibrarianQueueNotifications($reservation);
+        }
     }
 
     /**
@@ -133,39 +210,5 @@ final class ReservationDeanRouting
                 "No active dean approver is configured for «{$unit}». Ask an administrator to add a dean email mapping for this affiliation.",
             ],
         ]);
-    }
-
-    /**
-     * @return array<string, string> normalized lowercase email => send address
-     */
-    public static function pendingApprovalRecipientEmails(Reservation $reservation): array
-    {
-        $reservation->loadMissing('space', 'user');
-        $out = [];
-        foreach (User::whereHas('role', fn ($q) => $q->where('slug', 'admin'))->cursor() as $admin) {
-            $e = trim((string) $admin->email);
-            if ($e !== '') {
-                $out[strtolower($e)] = $e;
-            }
-        }
-
-        if (self::spaceUsesAvrLobbyAudienceRouting($reservation->space)) {
-            $mapping = self::resolveActiveDeanMapping($reservation);
-            if ($mapping !== null) {
-                $e = trim((string) $mapping->approver_email);
-                if ($e !== '') {
-                    $out[strtolower($e)] = $e;
-                }
-            }
-        }
-
-        return $out;
-    }
-
-    public static function sendPendingApprovalNotifications(Reservation $reservation): void
-    {
-        foreach (self::pendingApprovalRecipientEmails($reservation) as $email) {
-            Mail::to($email)->send(new ReservationPendingApprovalAdminMail($reservation));
-        }
     }
 }

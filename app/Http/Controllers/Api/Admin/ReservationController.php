@@ -83,6 +83,12 @@ class ReservationController extends Controller
 
     public function approve(ApproveReservationRequest $request, Reservation $reservation): JsonResponse
     {
+        if ($reservation->status === Reservation::STATUS_PENDING_DEAN_APPROVAL) {
+            return response()->json([
+                'message' => 'This reservation is awaiting dean/office approval. Library staff cannot approve it until that step is complete.',
+            ], 422);
+        }
+
         if (! $reservation->canTransitionTo(Reservation::STATUS_APPROVED)) {
             return response()->json(['message' => 'Reservation is not pending approval.'], 422);
         }
@@ -182,6 +188,12 @@ class ReservationController extends Controller
 
     public function reject(RejectReservationRequest $request, Reservation $reservation): JsonResponse
     {
+        if ($reservation->status === Reservation::STATUS_PENDING_DEAN_APPROVAL) {
+            return response()->json([
+                'message' => 'This reservation is awaiting dean/office approval. Library staff cannot reject it until that step is complete.',
+            ], 422);
+        }
+
         if (! $reservation->canTransitionTo(Reservation::STATUS_REJECTED)) {
             return response()->json(['message' => 'Reservation cannot be rejected.'], 422);
         }
@@ -229,6 +241,12 @@ class ReservationController extends Controller
 
     public function override(Request $request, Reservation $reservation): JsonResponse
     {
+        if ($reservation->status === Reservation::STATUS_PENDING_DEAN_APPROVAL) {
+            return response()->json([
+                'message' => 'This reservation is awaiting dean/office approval. Library staff cannot override it until that step is complete.',
+            ], 422);
+        }
+
         if (! $reservation->canTransitionTo(Reservation::STATUS_APPROVED)) {
             return response()->json(['message' => 'Reservation is not pending approval.'], 422);
         }

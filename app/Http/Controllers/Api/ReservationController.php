@@ -148,7 +148,13 @@ class ReservationController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        if (!in_array($reservation->status, [Reservation::STATUS_PENDING_APPROVAL, Reservation::STATUS_APPROVED], true)) {
+        $editableStatuses = [
+            Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+            Reservation::STATUS_PENDING_DEAN_APPROVAL,
+            Reservation::STATUS_PENDING_APPROVAL,
+            Reservation::STATUS_APPROVED,
+        ];
+        if (! in_array($reservation->status, $editableStatuses, true)) {
             return response()->json(['message' => 'Reservation cannot be edited in its current status.'], 422);
         }
 
@@ -161,8 +167,14 @@ class ReservationController extends Controller
         $data = $request->validated();
         $data['space_id'] = (int) $data['space_id'];
 
+        $nextStatus = match ($reservation->status) {
+            Reservation::STATUS_EMAIL_VERIFICATION_PENDING => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+            Reservation::STATUS_PENDING_DEAN_APPROVAL => Reservation::STATUS_PENDING_DEAN_APPROVAL,
+            default => Reservation::STATUS_PENDING_APPROVAL,
+        };
+
         try {
-            $updated = DB::transaction(function () use ($reservation, $data, $request) {
+            $updated = DB::transaction(function () use ($reservation, $data, $request, $nextStatus) {
                 $targetSpace = Space::whereKey($data['space_id'])->lockForUpdate()->first();
 
                 if (! $targetSpace?->isConfabAssignmentPool()) {
@@ -192,7 +204,7 @@ class ReservationController extends Controller
                     'space_id' => $data['space_id'],
                     'start_at' => $data['start_at'],
                     'end_at' => $data['end_at'],
-                    'status' => Reservation::STATUS_PENDING_APPROVAL,
+                    'status' => $nextStatus,
                     'approved_by' => null,
                     'approved_at' => null,
                     'reservation_number' => null,
@@ -205,7 +217,11 @@ class ReservationController extends Controller
                     'actor_user_id' => $request->user()->id,
                     'actor_type' => ReservationLog::ACTOR_USER,
                     'action' => ReservationLog::ACTION_UPDATE,
-                    'notes' => 'Reservation details updated; returned to admin review.',
+                    'notes' => match ($nextStatus) {
+                        Reservation::STATUS_EMAIL_VERIFICATION_PENDING => 'Reservation details updated before email confirmation.',
+                        Reservation::STATUS_PENDING_DEAN_APPROVAL => 'Reservation details updated; still pending dean/office approval.',
+                        default => 'Reservation details updated; returned to admin review.',
+                    },
                 ]);
 
                 return $reservation->fresh(['space', 'approver', 'logs.actor']);
@@ -214,8 +230,14 @@ class ReservationController extends Controller
             throw $e;
         }
 
+        $userMessage = match ($nextStatus) {
+            Reservation::STATUS_EMAIL_VERIFICATION_PENDING => 'Reservation updated. Please confirm your request using the link sent to your XU email if you have not already.',
+            Reservation::STATUS_PENDING_DEAN_APPROVAL => 'Reservation updated. It remains pending dean/office approval.',
+            default => 'Reservation updated. It is now pending admin approval.',
+        };
+
         return ApiResponse::message(
-            'Reservation updated. It is now pending admin approval.',
+            $userMessage,
             $updated->loadMissing(['space', 'user', 'approver', 'logs.actor'])->toArrayForUserApi()
         );
     }
@@ -274,9 +296,6 @@ class ReservationController extends Controller
             $reservation->update(['status' => Reservation::STATUS_REJECTED]);
             return response()->json(['message' => 'Confirmation link has expired.'], 422);
         }
-        if (!$reservation->canTransitionTo(Reservation::STATUS_PENDING_APPROVAL)) {
-            return response()->json(['message' => 'Invalid or expired confirmation link.'], 422);
-        }
         $reservation->load('space', 'user');
         try {
             ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
@@ -290,16 +309,24 @@ class ReservationController extends Controller
                 'errors' => $e->errors(),
             ], 422);
         }
+        $nextStatus = ReservationDeanRouting::statusAfterRequesterConfirmsEmail($reservation);
+        if (! $reservation->canTransitionTo($nextStatus)) {
+            return response()->json(['message' => 'Invalid or expired confirmation link.'], 422);
+        }
         $reservation->update([
-            'status' => Reservation::STATUS_PENDING_APPROVAL,
+            'status' => $nextStatus,
             'verified_at' => now(),
             'verification_token' => null,
             'verification_expires_at' => null,
         ]);
         $reservation->load('space', 'user');
-        ReservationDeanRouting::sendPendingApprovalNotifications($reservation->fresh(['space', 'user']));
+        ReservationDeanRouting::dispatchPostUserVerificationNotifications($reservation->fresh(['space', 'user']));
+        $msg = $nextStatus === Reservation::STATUS_PENDING_DEAN_APPROVAL
+            ? 'Reservation confirmed. It is now pending dean/office approval.'
+            : 'Reservation confirmed. It is now pending admin approval.';
+
         return ApiResponse::message(
-            'Reservation confirmed. It is now pending admin approval.',
+            $msg,
             $reservation->loadMissing(['space', 'user', 'approver', 'logs.actor'])->toArrayForUserApi()
         );
     }

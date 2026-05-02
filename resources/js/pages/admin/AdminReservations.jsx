@@ -179,6 +179,7 @@ export default function AdminReservations() {
                 >
                     <option value="">All</option>
                     <option value="email_verification_pending">Pending verification</option>
+                    <option value="pending_dean_approval">Pending dean/office approval</option>
                     <option value="pending_approval">Pending approval</option>
                     <option value="approved">Approved</option>
                     <option value="rejected">Rejected</option>
@@ -249,6 +250,11 @@ export default function AdminReservations() {
                                 {r.status === 'email_verification_pending' && (
                                     <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
                                         Awaiting requester email confirmation. <strong>Approve</strong> is available after they verify; <strong>Reject</strong> can decline before then.
+                                    </p>
+                                )}
+                                {r.status === 'pending_dean_approval' && (
+                                    <p className="text-xs text-violet-900 bg-violet-50 border border-violet-200 rounded px-2 py-1.5 mt-2 max-w-xl">
+                                        Awaiting dean/office decision via email. Library <strong>approve</strong>, <strong>reject</strong>, and <strong>override</strong> are disabled until then.
                                     </p>
                                 )}
                                 {r.rejected_reason && (

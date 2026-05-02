@@ -3,6 +3,10 @@ export const reservationStatusMeta = {
         label: 'Pending verification',
         badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200',
     },
+    pending_dean_approval: {
+        label: 'Pending dean/office approval',
+        badgeClass: 'bg-violet-50 text-violet-900 border border-violet-200',
+    },
     pending_approval: {
         label: 'Pending approval',
         badgeClass: 'bg-xu-primary/10 text-xu-primary border border-xu-primary/20',

@@ -16,7 +16,8 @@ import HalfHourWallClockSelect from '../components/booking/HalfHourWallClockSele
 
 function canEditReservation(r) {
     if (!r) return false;
-    if (!(r.status === 'pending_approval' || r.status === 'approved')) return false;
+    // Match cancel-eligible active statuses: user may adjust details before/after email confirmation.
+    if (!['email_verification_pending', 'pending_dean_approval', 'pending_approval', 'approved'].includes(r.status)) return false;
     if (!r.end_at) return false;
     return new Date(r.end_at).getTime() > Date.now();
 }
@@ -26,7 +27,7 @@ function canCancelReservation(r) {
     if (r.status === 'cancelled' || r.status === 'rejected') return false;
     if (!r.end_at) return false;
     if (new Date(r.end_at).getTime() <= Date.now()) return false;
-    if (!['email_verification_pending', 'pending_approval', 'approved'].includes(r.status)) return false;
+    if (!['email_verification_pending', 'pending_dean_approval', 'pending_approval', 'approved'].includes(r.status)) return false;
     return true;
 }
 
@@ -107,13 +108,15 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
         setSaving(true);
         const { start_at, end_at } = buildStartEndPayloadFromWallClock(wc.kind, wc);
         try {
-            const { data } = await api.patch(`/reservations/${reservation.id}`, {
+            const { data: body } = await api.patch(`/reservations/${reservation.id}`, {
                 space_id: Number(spaceId),
                 start_at,
                 end_at,
                 ...(needsEventAudience ? { event_request_type: eventRequestType } : {}),
             });
-            const updated = unwrapData(data);
+            const updated = unwrapData(body);
+            const msg = typeof body?.message === 'string' ? body.message : 'Reservation updated.';
+            alert(msg);
             onSaved(updated);
         } catch (err) {
             const d = err.response?.data;
@@ -287,7 +290,15 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                         {saving ? 'Saving…' : 'Save changes'}
                     </button>
                     <p className="text-xs text-slate-500">
-                        After saving, this reservation returns to <span className="font-medium text-slate-700">Pending approval</span> for admin review.
+                        {reservation?.status === 'email_verification_pending' ? (
+                            <>
+                                After saving, confirm your request using the link sent to your XU email if you have not already. You can still adjust details while awaiting confirmation.
+                            </>
+                        ) : (
+                            <>
+                                After saving, this reservation returns to <span className="font-medium text-slate-700">Pending approval</span> for admin review.
+                            </>
+                        )}
                     </p>
                 </div>
             </div>
@@ -372,7 +383,7 @@ export default function MyReservations() {
                                 )}
                             </div>
                             {(canEditReservation(r) || canCancelReservation(r)) && (
-                                <div className="flex shrink-0 flex-col gap-2 pl-3 sm:flex-row sm:items-start">
+                                <div className="flex shrink-0 flex-row flex-wrap items-center gap-2 pl-3">
                                     {canEditReservation(r) && (
                                         <button
                                             type="button"
@@ -405,7 +416,6 @@ export default function MyReservations() {
                 onSaved={(updated) => {
                     setReservations((prev) => prev.map((x) => (String(x.id) === String(updated.id) ? updated : x)));
                     setEditing(null);
-                    alert('Reservation updated. It is now pending admin approval.');
                 }}
             />
         </div>

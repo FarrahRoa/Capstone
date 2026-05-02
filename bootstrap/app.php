@@ -17,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \App\Http\Middleware\EnsureUserHasPermission::class,
             'token.fresh' => \App\Http\Middleware\EnsureSanctumTokenIsFresh::class,
         ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'dean/reservations/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

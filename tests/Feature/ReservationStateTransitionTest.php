@@ -92,7 +92,7 @@ class ReservationStateTransitionTest extends TestCase
         Mail::assertSent(ReservationVerificationMail::class);
     }
 
-    public function test_confirm_email_transitions_to_pending_approval(): void
+    public function test_confirm_email_avr_transitions_to_pending_dean_when_mapped(): void
     {
         Mail::fake();
 
@@ -107,8 +107,40 @@ class ReservationStateTransitionTest extends TestCase
 
         $response->assertStatus(200);
         $reservation->refresh();
-        $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $reservation->status);
+        $this->assertSame(Reservation::STATUS_PENDING_DEAN_APPROVAL, $reservation->status);
         $this->assertNotNull($reservation->verified_at);
+    }
+
+    public function test_confirm_email_non_avr_transitions_to_pending_approval(): void
+    {
+        Mail::fake();
+
+        $user = $this->makeUserWithRole('student', 'Student');
+        $space = Space::create([
+            'name' => 'Lecture',
+            'slug' => 'lec-'.Str::lower(Str::random(6)),
+            'type' => 'lecture',
+            'capacity' => 10,
+            'is_active' => true,
+        ]);
+        $reservation = Reservation::create([
+            'user_id' => $user->id,
+            'space_id' => $space->id,
+            'start_at' => now()->addDay()->setTime(9, 0),
+            'end_at' => now()->addDay()->setTime(10, 0),
+            'status' => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+            'purpose' => 'State transition test',
+            'verification_token' => Str::random(64),
+            'verification_expires_at' => now()->addHour(),
+        ]);
+
+        $response = $this->postJson('/api/reservations/confirm-email', [
+            'token' => $reservation->verification_token,
+        ]);
+
+        $response->assertStatus(200);
+        $reservation->refresh();
+        $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $reservation->status);
     }
 
     public function test_confirm_email_expired_transitions_to_rejected(): void
@@ -137,6 +169,11 @@ class ReservationStateTransitionTest extends TestCase
         $admin = $this->makeAdmin();
         Sanctum::actingAs($admin);
 
+        $deanPending = $this->makeReservation(Reservation::STATUS_PENDING_DEAN_APPROVAL);
+        $deanBlock = $this->postJson("/api/admin/reservations/{$deanPending->id}/approve", []);
+        $deanBlock->assertStatus(422);
+        $deanBlock->assertJsonFragment(['message' => 'This reservation is awaiting dean/office approval. Library staff cannot approve it until that step is complete.']);
+
         $pending = $this->makeReservation(Reservation::STATUS_PENDING_APPROVAL);
         $ok = $this->postJson("/api/admin/reservations/{$pending->id}/approve", []);
         $ok->assertStatus(200);
@@ -155,6 +192,15 @@ class ReservationStateTransitionTest extends TestCase
 
         $admin = $this->makeAdmin();
         Sanctum::actingAs($admin);
+
+        $deanPending = $this->makeReservation(Reservation::STATUS_PENDING_DEAN_APPROVAL);
+        $deanBlock = $this->postJson("/api/admin/reservations/{$deanPending->id}/reject", [
+            'reason' => 'Should not apply while dean pending.',
+        ]);
+        $deanBlock->assertStatus(422);
+        $deanBlock->assertJsonFragment(['message' => 'This reservation is awaiting dean/office approval. Library staff cannot reject it until that step is complete.']);
+        $deanPending->refresh();
+        $this->assertSame(Reservation::STATUS_PENDING_DEAN_APPROVAL, $deanPending->status);
 
         foreach ([Reservation::STATUS_PENDING_APPROVAL, Reservation::STATUS_EMAIL_VERIFICATION_PENDING] as $status) {
             $r = $this->makeReservation($status);
@@ -239,6 +285,7 @@ class ReservationStateTransitionTest extends TestCase
             [
                 Reservation::STATUS_APPROVED,
                 Reservation::STATUS_PENDING_APPROVAL,
+                Reservation::STATUS_PENDING_DEAN_APPROVAL,
                 Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
             ],
             $blocking

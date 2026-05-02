@@ -120,7 +120,12 @@ class UpdateReservationRequest extends FormRequest
             if (! $reservation instanceof Reservation) {
                 return;
             }
-            if (! in_array($reservation->status, [Reservation::STATUS_PENDING_APPROVAL, Reservation::STATUS_APPROVED], true)) {
+            if (! in_array($reservation->status, [
+                Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+                Reservation::STATUS_PENDING_DEAN_APPROVAL,
+                Reservation::STATUS_PENDING_APPROVAL,
+                Reservation::STATUS_APPROVED,
+            ], true)) {
                 return;
             }
             $tz = (string) config('app.timezone');

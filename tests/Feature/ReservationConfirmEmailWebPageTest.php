@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Mail\ReservationPendingApprovalAdminMail;
+use App\Mail\Reservation\ReservationDeanReviewRequestMail;
+use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
 use App\Models\Reservation;
 use App\Models\Role;
 use App\Models\Space;
@@ -79,10 +80,11 @@ class ReservationConfirmEmailWebPageTest extends TestCase
         $response->assertSee('Reservation confirmed');
 
         $reservation->refresh();
-        $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $reservation->status);
+        $this->assertSame(Reservation::STATUS_PENDING_DEAN_APPROVAL, $reservation->status);
         $this->assertNotNull($reservation->verified_at);
 
-        Mail::assertSent(ReservationPendingApprovalAdminMail::class, 2);
+        Mail::assertSent(ReservationDeanReviewRequestMail::class, 1);
+        Mail::assertNotSent(ReservationPendingApprovalAdminMail::class);
     }
 
     public function test_invalid_token_renders_error_page_and_sends_no_mail(): void

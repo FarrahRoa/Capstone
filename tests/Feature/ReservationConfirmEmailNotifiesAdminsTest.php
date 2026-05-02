@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Mail\ReservationPendingApprovalAdminMail;
+use App\Mail\Reservation\ReservationDeanReviewRequestMail;
+use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
 use App\Models\Reservation;
 use App\Models\Role;
 use App\Models\Space;
@@ -25,9 +26,9 @@ class ReservationConfirmEmailNotifiesAdminsTest extends TestCase
     private function makeSpace(): Space
     {
         return Space::create([
-            'name' => 'Room A',
-            'slug' => 'room-a',
-            'type' => 'avr',
+            'name' => 'Lecture Hall',
+            'slug' => 'lecture-hall-test',
+            'type' => 'lecture',
             'capacity' => 10,
             'is_active' => true,
         ]);
@@ -50,6 +51,29 @@ class ReservationConfirmEmailNotifiesAdminsTest extends TestCase
     {
         $user = $this->makeUserWithRole('student');
         $space = $this->makeSpace();
+
+        return Reservation::create([
+            'user_id' => $user->id,
+            'space_id' => $space->id,
+            'start_at' => now()->addDay()->setTime(9, 0),
+            'end_at' => now()->addDay()->setTime(10, 0),
+            'status' => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+            'purpose' => 'Test reservation',
+            'verification_token' => Str::random(64),
+            'verification_expires_at' => now()->addHour(),
+        ]);
+    }
+
+    private function makeAvrPendingVerificationReservation(): Reservation
+    {
+        $user = $this->makeUserWithRole('student');
+        $space = Space::create([
+            'name' => 'AVR Test',
+            'slug' => 'avr-confirm-test',
+            'type' => 'avr',
+            'capacity' => 10,
+            'is_active' => true,
+        ]);
 
         return Reservation::create([
             'user_id' => $user->id,
@@ -84,7 +108,7 @@ class ReservationConfirmEmailNotifiesAdminsTest extends TestCase
         $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $reservation->status);
         $this->assertNotNull($reservation->verified_at);
 
-        Mail::assertSent(ReservationPendingApprovalAdminMail::class, 3);
+        Mail::assertSent(ReservationPendingApprovalAdminMail::class, 2);
 
         $sentTo = [];
         Mail::assertSent(ReservationPendingApprovalAdminMail::class, function (ReservationPendingApprovalAdminMail $mail) use (&$sentTo) {
@@ -96,6 +120,25 @@ class ReservationConfirmEmailNotifiesAdminsTest extends TestCase
         $this->assertContains($admin1->email, $sentTo);
         $this->assertContains($admin2->email, $sentTo);
         $this->assertNotContains($nonAdmin->email, $sentTo);
+    }
+
+    public function test_avr_confirmation_emails_only_mapped_dean_not_staff_queue(): void
+    {
+        Mail::fake();
+
+        $this->makeUserWithRole('admin');
+        $reservation = $this->makeAvrPendingVerificationReservation();
+
+        $response = $this->postJson('/api/reservations/confirm-email', [
+            'token' => $reservation->verification_token,
+        ]);
+
+        $response->assertStatus(200);
+        $reservation->refresh();
+        $this->assertSame(Reservation::STATUS_PENDING_DEAN_APPROVAL, $reservation->status);
+
+        Mail::assertSent(ReservationDeanReviewRequestMail::class, 1);
+        Mail::assertNotSent(ReservationPendingApprovalAdminMail::class);
     }
 
     public function test_invalid_64_character_token_sends_no_admin_mail(): void

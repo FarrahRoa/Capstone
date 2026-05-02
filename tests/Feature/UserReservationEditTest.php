@@ -59,6 +59,42 @@ class UserReservationEditTest extends TestCase
         ]);
     }
 
+    public function test_user_can_edit_own_email_verification_pending_reservation_and_status_stays_email_pending(): void
+    {
+        $tz = (string) config('app.timezone');
+        Carbon::setTestNow(Carbon::parse('2026-04-10 12:00:00', $tz));
+
+        $user = $this->makeStudent();
+        Sanctum::actingAs($user);
+        $spaceA = $this->makeSpace('Room A');
+        $spaceB = $this->makeSpace('Room B');
+
+        $res = Reservation::create([
+            'user_id' => $user->id,
+            'space_id' => $spaceA->id,
+            'start_at' => Carbon::parse('2026-04-12 09:00:00', $tz),
+            'end_at' => Carbon::parse('2026-04-12 10:00:00', $tz),
+            'status' => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+            'purpose' => 'Test',
+            'verification_token' => str_repeat('a', 64),
+            'verification_expires_at' => Carbon::parse('2026-04-11 12:00:00', $tz),
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
+        ]);
+
+        $resp = $this->patchJson("/api/reservations/{$res->id}", [
+            'space_id' => $spaceB->id,
+            'start_at' => '2026-04-13T10:00:00+08:00',
+            'end_at' => '2026-04-13T11:00:00+08:00',
+        ]);
+
+        $resp->assertOk();
+        $this->assertDatabaseHas('reservations', [
+            'id' => $res->id,
+            'space_id' => $spaceB->id,
+            'status' => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+        ]);
+    }
+
     public function test_user_can_edit_own_pending_reservation_and_status_resets_to_pending_approval(): void
     {
         $tz = (string) config('app.timezone');
