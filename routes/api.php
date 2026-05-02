@@ -66,6 +66,8 @@ Route::middleware(['auth:sanctum', 'token.fresh', 'permission:spaces.manage'])->
     Route::get('/spaces', [App\Http\Controllers\Api\Admin\SpaceController::class, 'index']);
     Route::post('/spaces', [App\Http\Controllers\Api\Admin\SpaceController::class, 'store']);
     Route::put('/spaces/{space}', [App\Http\Controllers\Api\Admin\SpaceController::class, 'update']);
+    /** POST: same handler as PUT — multipart file uploads are not reliably available on PUT with PHP. */
+    Route::post('/spaces/{space}', [App\Http\Controllers\Api\Admin\SpaceController::class, 'update']);
     Route::post('/spaces/{space}/toggle-active', [App\Http\Controllers\Api\Admin\SpaceController::class, 'toggleActive']);
 });
 

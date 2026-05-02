@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api, { postMultipart, putMultipart } from '../../api';
+import api, { postMultipart } from '../../api';
 import { unwrapData } from '../../utils/apiEnvelope';
 import { getSpaceRestrictionLabel } from '../../utils/spaceEligibility';
 import { ui } from '../../theme';
@@ -174,7 +174,7 @@ export default function AdminSpaces() {
             if (editClearImage) {
                 fd.append('clear_image', '1');
             }
-            const { data } = await putMultipart(`/admin/spaces/${spaceId}`, fd);
+            const { data } = await postMultipart(`/admin/spaces/${spaceId}`, fd);
             const updated = unwrapData(data);
             setSpaces((prev) => prev.map((s) => (s.id === spaceId ? updated : s)));
             setBanner({ type: 'success', text: 'Space updated.' });
