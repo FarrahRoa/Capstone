@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500" role="img" aria-labelledby="title desc">
+  <title id="title">Library space</title>
+  <desc id="desc">Placeholder image for a library space</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f1f5f9"/>
+      <stop offset="100%" style="stop-color:#e2e8f0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)"/>
+  <rect x="120" y="140" width="560" height="220" rx="12" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+  <path d="M280 250h240M400 190v120" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="400" cy="250" r="48" fill="none" stroke="#64748b" stroke-width="2.5"/>
+  <text x="400" y="420" text-anchor="middle" fill="#64748b" font-family="Georgia, serif" font-size="22">Library space photo</text>
+</svg>

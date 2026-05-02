@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../../api';
+import api, { postMultipart, putMultipart } from '../../api';
 import { unwrapData } from '../../utils/apiEnvelope';
 import { getSpaceRestrictionLabel } from '../../utils/spaceEligibility';
 import { ui } from '../../theme';
@@ -34,9 +34,23 @@ export default function AdminSpaces() {
         is_active: true,
     });
     const [creating, setCreating] = useState(false);
+    const [createImageFile, setCreateImageFile] = useState(null);
     const [editingId, setEditingId] = useState(null);
     const [editDraft, setEditDraft] = useState(null);
+    const [editImageFile, setEditImageFile] = useState(null);
+    const [editClearImage, setEditClearImage] = useState(false);
+    const [editImagePreviewUrl, setEditImagePreviewUrl] = useState('');
     const [savingId, setSavingId] = useState(null);
+
+    useEffect(() => {
+        if (!editImageFile) {
+            setEditImagePreviewUrl('');
+            return;
+        }
+        const u = URL.createObjectURL(editImageFile);
+        setEditImagePreviewUrl(u);
+        return () => URL.revokeObjectURL(u);
+    }, [editImageFile]);
 
     const loadSpaces = () => {
         setLoading(true);
@@ -77,18 +91,32 @@ export default function AdminSpaces() {
         setFormErrors({});
         setBanner(null);
         try {
-            const payload = {
-                name: createForm.name.trim(),
-                slug: createForm.slug.trim(),
-                type: createForm.type,
-                is_active: Boolean(createForm.is_active),
-            };
-            if (createForm.capacity !== '' && createForm.capacity != null) {
-                payload.capacity = Number(createForm.capacity);
+            if (createImageFile) {
+                const fd = new FormData();
+                fd.append('name', createForm.name.trim());
+                fd.append('slug', createForm.slug.trim());
+                fd.append('type', createForm.type);
+                fd.append('is_active', createForm.is_active ? '1' : '0');
+                if (createForm.capacity !== '' && createForm.capacity != null) {
+                    fd.append('capacity', String(Number(createForm.capacity)));
+                }
+                fd.append('image', createImageFile);
+                await postMultipart('/admin/spaces', fd);
+            } else {
+                const payload = {
+                    name: createForm.name.trim(),
+                    slug: createForm.slug.trim(),
+                    type: createForm.type,
+                    is_active: Boolean(createForm.is_active),
+                };
+                if (createForm.capacity !== '' && createForm.capacity != null) {
+                    payload.capacity = Number(createForm.capacity);
+                }
+                await api.post('/admin/spaces', payload);
             }
-            await api.post('/admin/spaces', payload);
             setBanner({ type: 'success', text: 'Space created.' });
             setCreateForm({ name: '', slug: '', type: 'avr', capacity: '', is_active: true });
+            setCreateImageFile(null);
             setCreateOpen(false);
             loadSpaces();
         } catch (err) {
@@ -111,6 +139,8 @@ export default function AdminSpaces() {
             capacity: space.capacity ?? '',
             is_active: Boolean(space.is_active),
         });
+        setEditImageFile(null);
+        setEditClearImage(false);
         setFormErrors({});
         setBanner(null);
     };
@@ -118,6 +148,8 @@ export default function AdminSpaces() {
     const cancelEdit = () => {
         setEditingId(null);
         setEditDraft(null);
+        setEditImageFile(null);
+        setEditClearImage(false);
         setFormErrors({});
     };
 
@@ -126,18 +158,23 @@ export default function AdminSpaces() {
         setFormErrors({});
         setBanner(null);
         try {
-            const payload = {
-                name: editDraft.name.trim(),
-                slug: editDraft.slug.trim(),
-                type: editDraft.type,
-                is_active: Boolean(editDraft.is_active),
-            };
+            const fd = new FormData();
+            fd.append('name', editDraft.name.trim());
+            fd.append('slug', editDraft.slug.trim());
+            fd.append('type', editDraft.type);
+            fd.append('is_active', editDraft.is_active ? '1' : '0');
             if (editDraft.capacity === '' || editDraft.capacity == null) {
-                payload.capacity = null;
+                fd.append('capacity', '');
             } else {
-                payload.capacity = Number(editDraft.capacity);
+                fd.append('capacity', String(Number(editDraft.capacity)));
             }
-            const { data } = await api.put(`/admin/spaces/${spaceId}`, payload);
+            if (editImageFile) {
+                fd.append('image', editImageFile);
+            }
+            if (editClearImage) {
+                fd.append('clear_image', '1');
+            }
+            const { data } = await putMultipart(`/admin/spaces/${spaceId}`, fd);
             const updated = unwrapData(data);
             setSpaces((prev) => prev.map((s) => (s.id === spaceId ? updated : s)));
             setBanner({ type: 'success', text: 'Space updated.' });
@@ -232,6 +269,7 @@ export default function AdminSpaces() {
                     onClick={() => {
                         setCreateOpen((o) => !o);
                         setFormErrors({});
+                        setCreateImageFile(null);
                     }}
                     className="rounded-lg border border-slate-200 px-4 py-2 text-slate-700 hover:bg-xu-page hover:border-xu-secondary/25"
                 >
@@ -293,6 +331,18 @@ export default function AdminSpaces() {
                         />
                         {formErrors.capacity && <p className="text-red-600 text-xs mt-1">{formErrors.capacity[0]}</p>}
                     </div>
+                    <div>
+                        <label htmlFor="admin-spaces-create-image" className="block text-xs font-medium text-slate-700 mb-1">Photo (optional)</label>
+                        <input
+                            id="admin-spaces-create-image"
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                            onChange={(e) => setCreateImageFile(e.target.files?.[0] || null)}
+                            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded file:border-0 file:bg-xu-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-xu-primary"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">JPEG, PNG, or WebP. Max 5 MB.</p>
+                        {formErrors.image && <p className="text-red-600 text-xs mt-1">{formErrors.image[0]}</p>}
+                    </div>
                     <label className="flex items-center gap-2 text-sm">
                         <input
                             type="checkbox"
@@ -318,6 +368,7 @@ export default function AdminSpaces() {
                     <table className="min-w-full text-sm">
                         <thead className="bg-xu-primary/5 text-xu-primary border-b border-slate-200">
                             <tr>
+                                <th className="text-left px-3 py-2 font-semibold w-24">Photo</th>
                                 <th className="text-left px-3 py-2 font-semibold">Name</th>
                                 <th className="text-left px-3 py-2 font-semibold">Slug</th>
                                 <th className="text-left px-3 py-2 font-semibold">Type</th>
@@ -330,7 +381,7 @@ export default function AdminSpaces() {
                         <tbody>
                             {spaces.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-3 py-4 text-slate-700">No spaces match.</td>
+                                    <td colSpan={8} className="px-3 py-4 text-slate-700">No spaces match.</td>
                                 </tr>
                             )}
                             {spaces.map((s) => {
@@ -339,6 +390,55 @@ export default function AdminSpaces() {
                                 const editing = editingId === s.id;
                                 return (
                                     <tr key={s.id} className={`border-t border-slate-200 ${busy ? 'opacity-60' : ''}`}>
+                                        <td className="px-3 py-2 align-top w-28">
+                                            {editing ? (
+                                                <div className="space-y-2 max-w-[11rem]">
+                                                    <img
+                                                        src={
+                                                            editClearImage
+                                                                ? '/images/library-space-placeholder.svg'
+                                                                : (editImagePreviewUrl || s.image_url || '/images/library-space-placeholder.svg')
+                                                        }
+                                                        alt=""
+                                                        className="h-14 w-full max-w-[5.5rem] object-cover rounded border border-slate-200"
+                                                    />
+                                                    <div>
+                                                        <label htmlFor={`admin-spaces-edit-image-${s.id}`} className="block text-xs font-medium text-slate-600">Replace image</label>
+                                                        <input
+                                                            id={`admin-spaces-edit-image-${s.id}`}
+                                                            type="file"
+                                                            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                                                            disabled={busy}
+                                                            onChange={(e) => {
+                                                                setEditImageFile(e.target.files?.[0] || null);
+                                                                setEditClearImage(false);
+                                                            }}
+                                                            className="mt-0.5 block w-full text-xs text-slate-700 file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-xs"
+                                                        />
+                                                    </div>
+                                                    <label className="flex items-center gap-1.5 text-xs text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editClearImage}
+                                                            disabled={busy}
+                                                            onChange={(e) => {
+                                                                setEditClearImage(e.target.checked);
+                                                                if (e.target.checked) setEditImageFile(null);
+                                                            }}
+                                                        />
+                                                        Remove custom image
+                                                    </label>
+                                                </div>
+                                            ) : (
+                                                <img
+                                                    src={s.image_url || '/images/library-space-placeholder.svg'}
+                                                    alt=""
+                                                    className="h-11 w-16 object-cover rounded border border-slate-200"
+                                                    width={64}
+                                                    height={44}
+                                                />
+                                            )}
+                                        </td>
                                         <td className="px-3 py-2 align-top">
                                             {editing ? (
                                                 <input

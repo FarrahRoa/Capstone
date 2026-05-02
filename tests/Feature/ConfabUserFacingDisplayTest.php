@@ -46,6 +46,7 @@ class ConfabUserFacingDisplayTest extends TestCase
         $row = collect($resp->json('data'))->firstWhere('id', $room->id);
         $this->assertNotNull($row);
         $this->assertSame('Confab', $row['name']);
+        $this->assertSame('Space 9', $row['record_name']);
 
         $room->refresh();
         $this->assertSame('Space 9', $room->name, 'Database name remains for admin/internal use.');
@@ -65,6 +66,7 @@ class ConfabUserFacingDisplayTest extends TestCase
         $resp->assertOk();
         $row = collect($resp->json('data'))->firstWhere('id', $avr->id);
         $this->assertSame('Overview AVR', $row['name']);
+        $this->assertSame('Overview AVR', $row['record_name']);
     }
 
     public function test_public_schedule_overview_uses_user_facing_confab_label(): void

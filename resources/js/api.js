@@ -26,4 +26,39 @@ api.interceptors.response.use(
     }
 );
 
+/**
+ * POST multipart (e.g. file upload). Omits JSON Content-Type so the browser sets multipart boundaries.
+ * @param {string} url
+ * @param {FormData} formData
+ */
+export function postMultipart(url, formData) {
+    return api.post(url, formData, {
+        transformRequest: [
+            (data, headers) => {
+                if (data instanceof FormData) {
+                    delete headers['Content-Type'];
+                }
+                return data;
+            },
+        ],
+    });
+}
+
+/**
+ * @param {string} url
+ * @param {FormData} formData
+ */
+export function putMultipart(url, formData) {
+    return api.put(url, formData, {
+        transformRequest: [
+            (data, headers) => {
+                if (data instanceof FormData) {
+                    delete headers['Content-Type'];
+                }
+                return data;
+            },
+        ],
+    });
+}
+
 export default api;

@@ -167,11 +167,16 @@ export default function AdminReservations() {
     };
 
     return (
-        <div>
+        <div className="min-w-0 max-w-full">
             <h1 className={`${ui.pageTitle} mb-4`}>Reservation queue</h1>
-            <div className="mb-4">
-                <label className="mr-2 text-sm font-medium text-slate-700">Filter</label>
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={ui.select}>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <label htmlFor="admin-res-queue-filter" className="text-sm font-medium text-slate-700 shrink-0">Filter</label>
+                <select
+                    id="admin-res-queue-filter"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className={`${ui.select} w-full min-w-0 sm:w-auto sm:min-w-[14rem]`}
+                >
                     <option value="">All</option>
                     <option value="email_verification_pending">Pending verification</option>
                     <option value="pending_approval">Pending approval</option>
@@ -189,10 +194,10 @@ export default function AdminReservations() {
             <div className="space-y-3">
                 {(reservations.length === 0 && !loading) && <p className="text-slate-600">No reservations.</p>}
                 {reservations.map((r) => (
-                    <div key={r.id} className={`p-4 ${ui.cardFlat}`}>
-                        <div className="flex justify-between items-start gap-4">
+                    <div key={r.id} className={`p-3 sm:p-4 ${ui.cardFlat} overflow-hidden`}>
+                        <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-start">
                             <div className="min-w-0 flex-1">
-                                <p className="font-medium text-xu-primary">
+                                <p className="font-medium text-xu-primary text-[15px] sm:text-base break-words">
                                     {r.space?.name} – {r.user?.name} ({r.user?.email})
                                 </p>
                                 {r.user?.mobile_number && (
@@ -201,11 +206,11 @@ export default function AdminReservations() {
                                     </p>
                                 )}
                                 <p className="text-sm text-slate-600">{formatReservationRange(r.start_at, r.end_at)}</p>
-                                <p className="text-sm text-slate-500">
-                                    <span className={`inline-flex items-center rounded px-2 py-0.5 mr-2 text-xs font-medium ${getReservationStatusBadgeClass(r.status)}`}>
+                                <p className="text-sm text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getReservationStatusBadgeClass(r.status)}`}>
                                         {getReservationStatusLabel(r.status)}
                                     </span>
-                                    {r.reservation_number && `• ${r.reservation_number}`}
+                                    {r.reservation_number && <span className="text-slate-500">• {r.reservation_number}</span>}
                                 </p>
                                 {(r.space?.slug === 'avr'
                                     || r.space?.slug === 'lobby'
@@ -267,14 +272,14 @@ export default function AdminReservations() {
                                     </div>
                                 )}
                             </div>
-                            <div className="flex flex-col gap-2 items-end shrink-0">
-                                <div className="flex gap-2 flex-wrap justify-end">
+                            <div className="flex w-full min-w-0 flex-col gap-3 md:w-auto md:shrink-0 md:items-end">
+                                <div className="flex w-full flex-wrap gap-2 md:justify-end">
                                     {r.status === 'pending_approval' && canApprove && (
                                         <button
                                             type="button"
                                             onClick={() => approve(r)}
                                             disabled={actionId === r.id || (needsConfabAssign(r) && !confabPick[r.id])}
-                                            className="px-3 py-1.5 rounded-md bg-xu-primary text-white text-sm font-medium shadow-sm hover:bg-xu-secondary disabled:opacity-50 transition-colors"
+                                            className="min-h-[44px] touch-manipulation px-4 py-2 rounded-md bg-xu-primary text-white text-sm font-medium shadow-sm hover:bg-xu-secondary disabled:opacity-50 transition-colors md:min-h-0 md:px-3 md:py-1.5"
                                         >
                                             Approve
                                         </button>
@@ -284,7 +289,7 @@ export default function AdminReservations() {
                                             type="button"
                                             onClick={() => openReject(r.id)}
                                             disabled={actionId !== null && actionId !== r.id}
-                                            className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                                            className="min-h-[44px] touch-manipulation px-4 py-2 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 md:min-h-0 md:px-3 md:py-1.5"
                                         >
                                             Reject
                                         </button>
@@ -294,7 +299,7 @@ export default function AdminReservations() {
                                             type="button"
                                             onClick={() => overrideApprove(r)}
                                             disabled={actionId === r.id || (needsConfabAssign(r) && !confabPick[r.id])}
-                                            className="px-3 py-1.5 rounded-md border border-xu-secondary text-xu-secondary bg-white text-sm font-medium hover:bg-xu-page disabled:opacity-50 transition-colors"
+                                            className="min-h-[44px] touch-manipulation px-4 py-2 rounded-md border border-xu-secondary text-xu-secondary bg-white text-sm font-medium hover:bg-xu-page disabled:opacity-50 transition-colors md:min-h-0 md:px-3 md:py-1.5"
                                         >
                                             Override approve
                                         </button>
@@ -304,20 +309,21 @@ export default function AdminReservations() {
                                             type="button"
                                             onClick={() => cancel(r.id)}
                                             disabled={actionId === r.id}
-                                            className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 bg-white text-sm font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                                            className="min-h-[44px] touch-manipulation px-4 py-2 rounded-md border border-slate-300 text-slate-700 bg-white text-sm font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors md:min-h-0 md:px-3 md:py-1.5"
                                         >
                                             Cancel
                                         </button>
                                     )}
                                 </div>
                                 {needsConfabAssign(r) && (canApprove || canOverride) && (
-                                    <div className="flex flex-wrap items-center gap-2 justify-end max-w-xs">
-                                        <label className="text-xs font-medium text-slate-600 whitespace-nowrap">Confab room</label>
+                                    <div className="flex w-full min-w-0 flex-col gap-2 sm:max-w-xs md:items-end">
+                                        <label className="text-xs font-medium text-slate-600" htmlFor={`admin-res-confab-${r.id}`}>Confab room</label>
                                         <select
+                                            id={`admin-res-confab-${r.id}`}
                                             value={confabPick[r.id] || ''}
                                             onFocus={() => loadAssignOptions(r.id)}
                                             onChange={(e) => setConfabPick((p) => ({ ...p, [r.id]: e.target.value }))}
-                                            className={`${ui.select} text-sm min-w-[10rem]`}
+                                            className={`${ui.select} w-full min-w-0 text-sm md:min-w-[10rem] md:w-auto`}
                                         >
                                             <option value="">Select…</option>
                                             {Array.isArray(assignOptions[r.id]) && assignOptions[r.id].map((s) => (
@@ -325,41 +331,43 @@ export default function AdminReservations() {
                                             ))}
                                         </select>
                                         {assignOptions[r.id] === null && (
-                                            <span className="text-xs text-slate-500">Loading rooms…</span>
+                                            <span className="text-xs text-slate-500 md:text-right">Loading rooms…</span>
                                         )}
                                         {Array.isArray(assignOptions[r.id]) && assignOptions[r.id].length === 0 && (
-                                            <span className="text-xs text-red-600">No free confab rooms for this slot.</span>
+                                            <span className="text-xs text-red-600 md:text-right">No free confab rooms for this slot.</span>
                                         )}
                                     </div>
                                 )}
                             </div>
                         </div>
                         {actionId === r.id && canReject && (r.status === 'pending_approval' || r.status === 'email_verification_pending') && (
-                            <div className="mt-2 flex gap-2 flex-wrap">
+                            <div className="mt-3 flex flex-col gap-2 sm:mt-2 sm:flex-row sm:flex-wrap sm:items-stretch">
                                 <input
                                     type="text"
                                     value={rejectReason}
                                     onChange={(e) => setRejectReason(e.target.value)}
-                                    className={`${ui.input} text-sm flex-1 min-w-[12rem]`}
+                                    className={`${ui.input} text-sm w-full min-w-0 sm:flex-1 sm:min-w-[12rem]`}
                                     placeholder="Rejection reason"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => reject(r.id)}
-                                    className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700"
-                                >
-                                    Confirm reject
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setActionId(null);
-                                        setRejectReason('');
-                                    }}
-                                    className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 bg-white text-sm hover:bg-slate-50"
-                                >
-                                    Dismiss
-                                </button>
+                                <div className="flex flex-wrap gap-2 sm:shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => reject(r.id)}
+                                        className="min-h-[44px] touch-manipulation flex-1 px-4 py-2 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700 md:min-h-0 md:flex-none md:px-3 md:py-1.5"
+                                    >
+                                        Confirm reject
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setActionId(null);
+                                            setRejectReason('');
+                                        }}
+                                        className="min-h-[44px] touch-manipulation flex-1 px-4 py-2 rounded-md border border-slate-300 text-slate-700 bg-white text-sm hover:bg-slate-50 md:min-h-0 md:flex-none md:px-3 md:py-1.5"
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>

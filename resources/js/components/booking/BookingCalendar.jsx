@@ -22,6 +22,7 @@ import {
 import { unwrapData } from '../../utils/apiEnvelope';
 import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
 import { colorForSpaceId } from '../../utils/spaceColors';
+import SpaceShowcaseCarousel from './SpaceShowcaseCarousel';
 
 const DAY_START_HOUR = 9;
 const DAY_END_HOUR = 18;
@@ -304,6 +305,29 @@ export default function BookingCalendar({
                     <p className="text-sm text-red-700 bg-red-50/90 border border-red-100 rounded-md px-3 py-2 m-4 mb-0">
                         Could not load the room list. Refresh the page or try again later.
                     </p>
+                )}
+
+                {!spacesLoadError && spaces.length > 0 && (
+                    <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+                        <SpaceShowcaseCarousel
+                            className="mb-4 sm:mb-6"
+                            spaces={spaces}
+                            onSpaceSelect={
+                                readOnly
+                                    ? undefined
+                                    : (s) => {
+                                        if (s?.type === 'confab' && !s?.is_confab_pool) {
+                                            const pool = spaces.find((x) => x.is_confab_pool);
+                                            if (pool) {
+                                                setSelectedSpaceId(String(pool.id));
+                                                return;
+                                            }
+                                        }
+                                        setSelectedSpaceId(String(s.id));
+                                    }
+                            }
+                        />
+                    </div>
                 )}
 
                 <div className="border-b border-slate-200/90 bg-gradient-to-r from-xu-primary/[0.07] via-white to-xu-page/80 px-4 py-4 sm:px-6 sm:py-4">

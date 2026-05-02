@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Space extends Model
 {
@@ -16,7 +17,9 @@ class Space extends Model
     /** Standard confab rooms (Confab 1…N). */
     public const TYPE_CONFAB = 'confab';
 
-    protected $fillable = ['name', 'slug', 'type', 'capacity', 'is_active', 'is_confab_pool', 'guideline_details'];
+    protected $fillable = ['name', 'slug', 'type', 'capacity', 'is_active', 'is_confab_pool', 'guideline_details', 'image_path'];
+
+    protected $appends = ['image_url'];
 
     protected function casts(): array
     {
@@ -69,6 +72,18 @@ class Space extends Model
         }
 
         return $this->userFacingName();
+    }
+
+    /**
+     * Public URL for the space photo, or the app placeholder when none is stored.
+     */
+    public function getImageUrlAttribute(): string
+    {
+        if ($this->image_path && Storage::disk('public')->exists($this->image_path)) {
+            return Storage::disk('public')->url($this->image_path);
+        }
+
+        return asset('images/library-space-placeholder.svg');
     }
 
     public function reservations(): HasMany

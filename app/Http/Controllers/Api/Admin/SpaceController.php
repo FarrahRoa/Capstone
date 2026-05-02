@@ -9,6 +9,7 @@ use App\Models\Space;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class SpaceController extends Controller
 {
@@ -59,6 +60,14 @@ class SpaceController extends Controller
         ]);
 
         return ApiResponse::data($space->fresh());
+    }
+
+    private function deleteStoredSpaceImage(Space $space): void
+    {
+        $path = $space->image_path;
+        if ($path && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
     }
 }
 

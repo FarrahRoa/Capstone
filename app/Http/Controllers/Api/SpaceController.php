@@ -24,8 +24,12 @@ class SpaceController extends Controller
                 ? $space->scheduleOperationalDisplayName()
                 : $space->userFacingName();
 
-            return array_merge($space->toArray(), [
+            $base = $space->toArray();
+
+            return array_merge($base, [
                 'name' => $displayName,
+                /** Stored room name for showcase (e.g. Confab 1); {@see $displayName} stays booking-facing. */
+                'record_name' => $base['name'] ?? $space->name,
                 'guideline_details' => SpaceGuidelineDetails::forApi($space->guideline_details),
             ]);
         })->values()->all();

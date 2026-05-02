@@ -6,6 +6,8 @@ use App\Models\Role;
 use App\Models\Space;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -237,6 +239,105 @@ class AdminSpaceManagementTest extends TestCase
         $response = $this->getJson('/api/admin/spaces');
 
         $response->assertStatus(401);
+    }
+
+    public function test_admin_can_create_space_with_image(): void
+    {
+        Storage::fake('public');
+
+        $admin = $this->makeAdminUser();
+        Sanctum::actingAs($admin);
+
+        $file = UploadedFile::fake()->image('space-photo.jpg', 640, 480);
+
+        $response = $this->post('/api/admin/spaces', [
+            'name' => 'Photo Room',
+            'slug' => 'photo-room',
+            'type' => 'avr',
+            'is_active' => true,
+            'image' => $file,
+        ]);
+
+        $response->assertStatus(201);
+        $space = Space::where('slug', 'photo-room')->first();
+        $this->assertNotNull($space);
+        $this->assertNotNull($space->image_path);
+        Storage::disk('public')->assertExists($space->image_path);
+
+        $url = $response->json('data.image_url');
+        $this->assertIsString($url);
+        $this->assertNotSame('', $url);
+    }
+
+    public function test_admin_can_replace_space_image_and_old_file_is_removed(): void
+    {
+        Storage::fake('public');
+
+        $admin = $this->makeAdminUser();
+        Sanctum::actingAs($admin);
+
+        $first = UploadedFile::fake()->image('first.jpg', 400, 300);
+        $this->post('/api/admin/spaces', [
+            'name' => 'Swap Room',
+            'slug' => 'swap-room',
+            'type' => 'lobby',
+            'is_active' => true,
+            'image' => $first,
+        ])->assertStatus(201);
+
+        $space = Space::where('slug', 'swap-room')->first();
+        $oldPath = $space->image_path;
+        $this->assertNotNull($oldPath);
+        Storage::disk('public')->assertExists($oldPath);
+
+        $second = UploadedFile::fake()->image('second.jpg', 400, 300);
+        $this->put("/api/admin/spaces/{$space->id}", [
+            'name' => $space->name,
+            'slug' => $space->slug,
+            'type' => $space->type,
+            'is_active' => '1',
+            'capacity' => '',
+            'image' => $second,
+        ])->assertStatus(200);
+
+        $space->refresh();
+        $this->assertNotSame($oldPath, $space->image_path);
+        Storage::disk('public')->assertMissing($oldPath);
+        Storage::disk('public')->assertExists($space->image_path);
+    }
+
+    public function test_admin_can_clear_space_image(): void
+    {
+        Storage::fake('public');
+
+        $admin = $this->makeAdminUser();
+        Sanctum::actingAs($admin);
+
+        $file = UploadedFile::fake()->image('gone.jpg', 200, 200);
+        $this->post('/api/admin/spaces', [
+            'name' => 'Clear Room',
+            'slug' => 'clear-room',
+            'type' => 'avr',
+            'is_active' => true,
+            'image' => $file,
+        ])->assertStatus(201);
+
+        $space = Space::where('slug', 'clear-room')->first();
+        $oldPath = $space->image_path;
+        Storage::disk('public')->assertExists($oldPath);
+
+        $this->put("/api/admin/spaces/{$space->id}", [
+            'name' => $space->name,
+            'slug' => $space->slug,
+            'type' => $space->type,
+            'is_active' => '1',
+            'capacity' => '',
+            'clear_image' => '1',
+        ])->assertStatus(200);
+
+        $space->refresh();
+        $this->assertNull($space->image_path);
+        Storage::disk('public')->assertMissing($oldPath);
     }
 }
 

@@ -14,6 +14,7 @@ import {
 import { unwrapData } from '../utils/apiEnvelope';
 import { ui } from '../theme';
 import HalfHourWallClockSelect from '../components/booking/HalfHourWallClockSelect';
+import SpaceShowcaseCarousel from '../components/booking/SpaceShowcaseCarousel';
 import { spaceGuidelinesDetailRows, spaceGuidelinesHasDetails } from '../utils/spaceGuidelineDisplay';
 
 function initialDateFromParams(dateParam) {
@@ -35,6 +36,8 @@ export default function ReservationForm() {
     const startTimeParam = searchParams.get('start_time');
     const endTimeParam = searchParams.get('end_time');
     const [spaces, setSpaces] = useState([]);
+    /** Full active space list for the photo showcase (includes numbered Confab rooms). */
+    const [showcaseSpaces, setShowcaseSpaces] = useState([]);
     const [spaceIdVal, setSpaceIdVal] = useState(spaceId || '');
     const [date, setDate] = useState(() => initialDateFromParams(dateParam));
     const [startTime, setStartTime] = useState('09:00');
@@ -71,6 +74,7 @@ export default function ReservationForm() {
         api.get('/spaces').then(({ data }) => {
             const list = unwrapData(data);
             const raw = Array.isArray(list) ? list : [];
+            setShowcaseSpaces(raw);
             setSpaces(raw.filter((s) => !(s.type === 'confab' && !s.is_confab_pool)));
             if (spaceId && !spaceIdVal) setSpaceIdVal(spaceId);
         });
@@ -210,12 +214,30 @@ export default function ReservationForm() {
     };
 
     return (
-        <div className="min-w-0 w-full max-w-xl pb-2 sm:pb-0">
-            <h1 className={`${ui.pageTitle} mb-4`}>New reservation</h1>
+        <div className="min-w-0 w-full max-w-3xl pb-2 sm:pb-0">
+            <h1 className={`${ui.pageTitle} mb-4 max-w-xl`}>New reservation</h1>
+            {showcaseSpaces.length > 0 && (
+                <div className="mb-6 w-full min-w-0">
+                    <SpaceShowcaseCarousel
+                        spaces={showcaseSpaces}
+                        onSpaceSelect={(s) => {
+                            if (s?.type === 'confab' && !s?.is_confab_pool) {
+                                const pool = showcaseSpaces.find((x) => x.is_confab_pool);
+                                if (pool) {
+                                    setSpaceIdVal(String(pool.id));
+                                    return;
+                                }
+                            }
+                            setSpaceIdVal(String(s.id));
+                        }}
+                        heading="Choose a space"
+                    />
+                </div>
+            )}
             {(guidelines.trim() !== '' ||
                 (selectedSpace && !isConfabPool && spaceGuidelinesHasDetails(selectedSpace)) ||
                 isConfabPool) && (
-                <div className="mb-4 space-y-3">
+                <div className="mb-4 space-y-3 max-w-xl">
                     {guidelines.trim() !== '' && (
                         <details className="bg-white border border-slate-200/90 rounded-lg p-4 text-sm text-slate-700 shadow-sm border-l-4 border-l-xu-gold/60">
                             <summary className="cursor-pointer font-medium text-xu-primary">General guidelines</summary>
@@ -318,7 +340,7 @@ export default function ReservationForm() {
                     )}
                 </div>
             )}
-            <form onSubmit={handleSubmit} className={`min-w-0 space-y-4 p-4 sm:p-6 ${ui.cardFlat}`}>
+            <form onSubmit={handleSubmit} className={`min-w-0 max-w-xl space-y-4 p-4 sm:p-6 ${ui.cardFlat}`}>
                 {error && <div className="text-red-700 text-sm bg-red-50 border border-red-200 p-3 rounded-lg">{error}</div>}
                 <p id="reserve-timezone-hint" className="text-xs text-slate-500 -mt-1 mb-1">
                     Date and times are in Philippines civil time ({BOOKING_TIMEZONE} / PHT), matching the server.
