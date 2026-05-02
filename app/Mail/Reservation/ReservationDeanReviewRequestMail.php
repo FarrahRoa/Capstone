@@ -14,11 +14,14 @@ class ReservationDeanReviewRequestMail extends Mailable
 {
     use Queueable, SerializesModels;
 
+    /** Signed GET: full review (both actions). */
     public string $reviewUrl;
 
-    public string $approveUrl;
+    /** Signed GET: open review page pre-focused on approve (confirm via POST in browser). */
+    public string $approveReviewUrl;
 
-    public string $rejectUrl;
+    /** Signed GET: open review page pre-focused on reject (confirm via POST in browser). */
+    public string $rejectReviewUrl;
 
     public function __construct(
         public Reservation $reservation
@@ -26,8 +29,14 @@ class ReservationDeanReviewRequestMail extends Mailable
         $expiry = now()->addDays(21);
         $id = $reservation->id;
         $this->reviewUrl = URL::temporarySignedRoute('dean.reservations.review', $expiry, ['reservation' => $id]);
-        $this->approveUrl = URL::temporarySignedRoute('dean.reservations.approve', $expiry, ['reservation' => $id]);
-        $this->rejectUrl = URL::temporarySignedRoute('dean.reservations.reject', $expiry, ['reservation' => $id]);
+        $this->approveReviewUrl = URL::temporarySignedRoute('dean.reservations.review', $expiry, [
+            'reservation' => $id,
+            'intent' => 'approve',
+        ]);
+        $this->rejectReviewUrl = URL::temporarySignedRoute('dean.reservations.review', $expiry, [
+            'reservation' => $id,
+            'intent' => 'reject',
+        ]);
     }
 
     public function envelope(): Envelope

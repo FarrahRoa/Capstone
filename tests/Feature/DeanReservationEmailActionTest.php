@@ -80,6 +80,42 @@ class DeanReservationEmailActionTest extends TestCase
         $this->assertSame(Reservation::STATUS_PENDING_DEAN_APPROVAL, $reservation->status);
     }
 
+    public function test_review_get_with_intent_does_not_change_status_until_post(): void
+    {
+        $reservation = $this->makePendingDeanReservation();
+        $url = URL::temporarySignedRoute('dean.reservations.review', now()->addHour(), [
+            'reservation' => $reservation->id,
+            'intent' => 'approve',
+        ]);
+
+        $response = $this->get($url);
+        $response->assertStatus(200);
+        $response->assertSee('Confirm approval', false);
+
+        $reservation->refresh();
+        $this->assertSame(Reservation::STATUS_PENDING_DEAN_APPROVAL, $reservation->status);
+    }
+
+    public function test_email_style_flow_get_intent_then_post_approve(): void
+    {
+        Mail::fake();
+        $this->makeAdminUser();
+        $reservation = $this->makePendingDeanReservation();
+
+        $reviewUrl = URL::temporarySignedRoute('dean.reservations.review', now()->addHour(), [
+            'reservation' => $reservation->id,
+            'intent' => 'approve',
+        ]);
+        $this->get($reviewUrl)->assertStatus(200);
+
+        $postUrl = URL::temporarySignedRoute('dean.reservations.approve', now()->addHour(), ['reservation' => $reservation->id]);
+        $this->post($postUrl)->assertStatus(200);
+
+        $reservation->refresh();
+        $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $reservation->status);
+        Mail::assertSent(ReservationUserDeanApprovedMail::class, 1);
+    }
+
     public function test_approve_post_is_idempotent(): void
     {
         Mail::fake();

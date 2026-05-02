@@ -25,6 +25,11 @@ class DeanReservationActionController extends Controller
         $expiry = now()->addDays(21);
         $id = $reservation->id;
 
+        $rawIntent = $request->query('intent');
+        $intent = is_string($rawIntent) && in_array($rawIntent, ['approve', 'reject'], true)
+            ? $rawIntent
+            : null;
+
         if ($reservation->status !== Reservation::STATUS_PENDING_DEAN_APPROVAL) {
             return response()
                 ->view('dean.reservation-result', [
@@ -39,6 +44,8 @@ class DeanReservationActionController extends Controller
         return response()
             ->view('dean.reservation-review', [
                 'reservation' => $reservation,
+                'intent' => $intent,
+                'neutralReviewUrl' => URL::temporarySignedRoute('dean.reservations.review', $expiry, ['reservation' => $id]),
                 'approveUrl' => URL::temporarySignedRoute('dean.reservations.approve', $expiry, ['reservation' => $id]),
                 'rejectUrl' => URL::temporarySignedRoute('dean.reservations.reject', $expiry, ['reservation' => $id]),
             ])
