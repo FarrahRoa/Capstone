@@ -228,6 +228,12 @@ export default function AdminReservations() {
                                                 <span className="font-semibold text-slate-800">Notes:</span> {r.event_description}
                                             </p>
                                         )}
+                                        {r.event_request_type && (r.space?.type === 'avr' || r.space?.type === 'lobby') && (
+                                            <p>
+                                                <span className="font-semibold text-slate-800">Event audience:</span>{' '}
+                                                {r.event_request_type === 'organization' ? 'Organization event' : r.event_request_type === 'employee' ? 'Employee event' : r.event_request_type}
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                                 {needsConfabAssign(r) && (

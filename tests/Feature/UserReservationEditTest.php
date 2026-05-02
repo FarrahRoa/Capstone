@@ -16,6 +16,12 @@ class UserReservationEditTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeStudent(): User
     {
         $role = Role::firstOrCreate(
@@ -70,6 +76,7 @@ class UserReservationEditTest extends TestCase
             'end_at' => Carbon::parse('2026-04-12 10:00:00', $tz),
             'status' => Reservation::STATUS_PENDING_APPROVAL,
             'purpose' => 'Test',
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         $resp = $this->patchJson("/api/reservations/{$res->id}", [
@@ -112,6 +119,7 @@ class UserReservationEditTest extends TestCase
             'approved_by' => $admin->id,
             'approved_at' => Carbon::now($tz),
             'purpose' => 'Approved',
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         $resp = $this->patchJson("/api/reservations/{$res->id}", [
@@ -192,6 +200,7 @@ class UserReservationEditTest extends TestCase
             'start_at' => Carbon::parse('2026-04-12 09:00:00', $tz),
             'end_at' => Carbon::parse('2026-04-12 10:00:00', $tz),
             'status' => Reservation::STATUS_PENDING_APPROVAL,
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         Sanctum::actingAs($attacker);
@@ -220,6 +229,7 @@ class UserReservationEditTest extends TestCase
             'status' => Reservation::STATUS_APPROVED,
             'approved_by' => $admin->id,
             'approved_at' => Carbon::now($tz),
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         // Taken slot for the target edit time.
@@ -230,6 +240,7 @@ class UserReservationEditTest extends TestCase
             'start_at' => Carbon::parse('2026-04-13 11:00:00', $tz),
             'end_at' => Carbon::parse('2026-04-13 12:00:00', $tz),
             'status' => Reservation::STATUS_PENDING_APPROVAL,
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         Sanctum::actingAs($user);
@@ -272,6 +283,7 @@ class UserReservationEditTest extends TestCase
             'end_at' => Carbon::parse('2026-04-12 10:00:00', $tz),
             'status' => Reservation::STATUS_PENDING_APPROVAL,
             'purpose' => 'Study',
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         $resp = $this->patchJson("/api/reservations/{$res->id}", [
@@ -304,6 +316,7 @@ class UserReservationEditTest extends TestCase
             'start_at' => Carbon::parse('2026-04-12 09:00:00', $tz),
             'end_at' => Carbon::parse('2026-04-12 10:00:00', $tz),
             'status' => Reservation::STATUS_PENDING_APPROVAL,
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         $resp = $this->patchJson("/api/reservations/{$res->id}", [

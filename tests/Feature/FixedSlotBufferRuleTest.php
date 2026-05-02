@@ -15,6 +15,12 @@ class FixedSlotBufferRuleTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeStudent(): User
     {
         $role = Role::firstOrCreate(
@@ -47,12 +53,12 @@ class FixedSlotBufferRuleTest extends TestCase
         $space = $this->makeSpace();
 
         $day = now()->addDays(2)->startOfDay();
-        $resp = $this->postJson('/api/reservations', [
+        $resp = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => $day->copy()->setTime(9, 0)->toDateTimeString(),
             'end_at' => $day->copy()->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Test',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(201);
         Mail::assertSent(ReservationVerificationMail::class);
@@ -66,12 +72,12 @@ class FixedSlotBufferRuleTest extends TestCase
         $space = $this->makeSpace();
 
         $day = now()->addDays(2)->startOfDay();
-        $resp = $this->postJson('/api/reservations', [
+        $resp = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => $day->copy()->setTime(9, 30)->toDateTimeString(),
             'end_at' => $day->copy()->setTime(10, 30)->toDateTimeString(),
             'purpose' => 'Test',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(201);
         Mail::assertSent(ReservationVerificationMail::class);
@@ -85,12 +91,12 @@ class FixedSlotBufferRuleTest extends TestCase
         $space = $this->makeSpace();
 
         $day = now()->addDays(2)->startOfDay();
-        $resp = $this->postJson('/api/reservations', [
+        $resp = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => $day->copy()->setTime(9, 15)->toDateTimeString(),
             'end_at' => $day->copy()->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Test',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(422);
         $resp->assertJsonValidationErrors(['start_at']);
@@ -105,12 +111,12 @@ class FixedSlotBufferRuleTest extends TestCase
         $space = $this->makeSpace();
 
         $day = now()->addDays(2)->startOfDay();
-        $resp = $this->postJson('/api/reservations', [
+        $resp = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => $day->copy()->setTime(9, 0)->toDateTimeString(),
             'end_at' => $day->copy()->setTime(10, 45)->toDateTimeString(),
             'purpose' => 'Test',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(422);
         $resp->assertJsonValidationErrors(['end_at']);
@@ -125,12 +131,12 @@ class FixedSlotBufferRuleTest extends TestCase
         $space = $this->makeSpace();
 
         $day = now()->addDays(2)->startOfDay();
-        $resp = $this->postJson('/api/reservations', [
+        $resp = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => $day->copy()->setTime(9, 30)->toDateTimeString(),
             'end_at' => $day->copy()->setTime(10, 15)->toDateTimeString(),
             'purpose' => 'Test',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(422);
         $resp->assertJsonValidationErrors(['end_at']);

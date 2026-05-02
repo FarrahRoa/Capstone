@@ -16,6 +16,12 @@ class AvrLobbyRangeReservationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeStudent(): User
     {
         $role = Role::firstOrCreate(['slug' => 'student'], ['name' => 'Student', 'description' => 'Test']);
@@ -41,14 +47,14 @@ class AvrLobbyRangeReservationTest extends TestCase
 
         $avr = $this->makeSpace('avr', 'avr', 'AVR');
 
-        $resp = $this->postJson('/api/reservations', [
+        $resp = $this->postJson('/api/reservations', array_merge([
             'space_id' => $avr->id,
             'start_at' => now()->addDays(2)->setTime(9, 0)->toDateTimeString(),
             'end_at' => now()->addDays(2)->setTime(10, 30)->toDateTimeString(),
             'event_title' => 'AVR Event',
             'event_description' => 'Notes here',
             'participant_count' => 50,
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(201);
         $this->assertDatabaseHas('reservations', [
@@ -57,6 +63,7 @@ class AvrLobbyRangeReservationTest extends TestCase
             'event_description' => 'Notes here',
             'participant_count' => 50,
             'status' => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
         Mail::assertSent(ReservationVerificationMail::class);
     }

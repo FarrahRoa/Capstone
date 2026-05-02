@@ -15,6 +15,12 @@ class ReservationCreatePermissionTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeUserWithRole(string $slug, string $name): User
     {
         $role = Role::firstOrCreate(
@@ -47,12 +53,12 @@ class ReservationCreatePermissionTest extends TestCase
         Sanctum::actingAs($student);
         $space = $this->makeSpace();
 
-        $response = $this->postJson('/api/reservations', [
+        $response = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => now()->addDay()->setTime(9, 0)->toDateTimeString(),
             'end_at' => now()->addDay()->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Study session',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $response->assertStatus(201);
         $response->assertJsonFragment([
@@ -68,12 +74,12 @@ class ReservationCreatePermissionTest extends TestCase
         Sanctum::actingAs($assistant);
         $space = $this->makeSpace();
 
-        $response = $this->postJson('/api/reservations', [
+        $response = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => now()->addDay()->setTime(9, 0)->toDateTimeString(),
             'end_at' => now()->addDay()->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Assist work',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $response->assertStatus(403);
     }

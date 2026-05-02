@@ -61,6 +61,7 @@ class AdminReservationActionValidationTest extends TestCase
             'end_at' => now()->addDay()->setTime(10, 0),
             'status' => $status,
             'purpose' => 'Test reservation',
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
     }
 

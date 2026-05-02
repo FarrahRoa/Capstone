@@ -17,6 +17,12 @@ class ReservationStateTransitionTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeUserWithRole(string $slug, string $name): User
     {
         $role = Role::firstOrCreate(
@@ -58,6 +64,7 @@ class ReservationStateTransitionTest extends TestCase
             'end_at' => now()->addDay()->setTime(10, 0),
             'status' => $status,
             'purpose' => 'State transition test',
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ], $extra));
     }
 
@@ -69,12 +76,12 @@ class ReservationStateTransitionTest extends TestCase
         Sanctum::actingAs($student);
         $space = $this->makeSpace();
 
-        $response = $this->postJson('/api/reservations', [
+        $response = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => now()->addDay()->setTime(9, 0)->toDateTimeString(),
             'end_at' => now()->addDay()->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'New booking',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $response->assertStatus(201);
         $id = $response->json('data.id');

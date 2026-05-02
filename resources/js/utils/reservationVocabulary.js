@@ -41,3 +41,13 @@ export function getReservationStatusBadgeClass(status) {
 export function getReservationActionLabel(action) {
     return reservationActionLabels[action] || action;
 }
+
+const eventRequestTypeLabels = {
+    organization: 'Organization event',
+    employee: 'Employee event',
+};
+
+export function getEventRequestTypeLabel(type) {
+    if (!type) return '';
+    return eventRequestTypeLabels[type] || type;
+}

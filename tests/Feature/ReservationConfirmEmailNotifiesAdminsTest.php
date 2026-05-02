@@ -16,6 +16,12 @@ class ReservationConfirmEmailNotifiesAdminsTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeSpace(): Space
     {
         return Space::create([
@@ -54,6 +60,7 @@ class ReservationConfirmEmailNotifiesAdminsTest extends TestCase
             'purpose' => 'Test reservation',
             'verification_token' => Str::random(64),
             'verification_expires_at' => now()->addHour(),
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
     }
 
@@ -77,7 +84,7 @@ class ReservationConfirmEmailNotifiesAdminsTest extends TestCase
         $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $reservation->status);
         $this->assertNotNull($reservation->verified_at);
 
-        Mail::assertSent(ReservationPendingApprovalAdminMail::class, 2);
+        Mail::assertSent(ReservationPendingApprovalAdminMail::class, 3);
 
         $sentTo = [];
         Mail::assertSent(ReservationPendingApprovalAdminMail::class, function (ReservationPendingApprovalAdminMail $mail) use (&$sentTo) {

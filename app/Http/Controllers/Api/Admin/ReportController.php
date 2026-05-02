@@ -100,8 +100,19 @@ class ReportController extends Controller
         $from = $this->resolveFrom($request);
         $to = $this->resolveTo($request);
 
-        $reservations = Reservation::whereBetween('start_at', [$from, $to])
+        // Include reservations scheduled in the period, plus approved reservations whose
+        // approval fell in the period (so aggregates stay aligned with reservation_logs /
+        // Recent activity when bookings are approved ahead of their start date).
+        $reservations = Reservation::query()
             ->with(['user.role', 'space', 'approver'])
+            ->where(function ($q) use ($from, $to) {
+                $q->whereBetween('start_at', [$from, $to])
+                    ->orWhere(function ($q2) use ($from, $to) {
+                        $q2->where('status', Reservation::STATUS_APPROVED)
+                            ->whereNotNull('approved_at')
+                            ->whereBetween('approved_at', [$from, $to]);
+                    });
+            })
             ->get();
         $approved = $reservations->where('status', Reservation::STATUS_APPROVED);
 
@@ -192,6 +203,7 @@ class ReportController extends Controller
                 'approved_by' => $reservation->approver?->name,
                 'rejected_reason' => $reservation->rejected_reason,
                 'verified_at' => optional($reservation->verified_at)->toDateTimeString(),
+                'event_request_type' => $reservation->event_request_type,
             ];
         });
 

@@ -6,13 +6,12 @@ use App\Exceptions\ReservationVerificationMailException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Reservation\StoreReservationRequest;
 use App\Http\Requests\Reservation\UpdateReservationRequest;
-use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
 use App\Mail\Reservation\ReservationVerificationMail;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Space;
-use App\Models\User;
 use App\Support\ApiResponse;
+use App\Support\ReservationDeanRouting;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,6 +58,10 @@ class ReservationController extends Controller
     public function store(StoreReservationRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $spaceRowEarly = Space::find((int) $data['space_id']);
+        if ($spaceRowEarly && ! ReservationDeanRouting::spaceUsesAvrLobbyAudienceRouting($spaceRowEarly)) {
+            unset($data['event_request_type']);
+        }
         $data['user_id'] = $request->user()->id;
         $data['status'] = Reservation::initialCreateStatus();
         $data['verification_token'] = Str::random(64);
@@ -178,6 +181,13 @@ class ReservationController extends Controller
                     }
                 }
 
+                $eventAudience = null;
+                if (ReservationDeanRouting::spaceUsesAvrLobbyAudienceRouting($targetSpace)) {
+                    $eventAudience = array_key_exists('event_request_type', $data)
+                        ? $data['event_request_type']
+                        : $reservation->event_request_type;
+                }
+
                 $reservation->update([
                     'space_id' => $data['space_id'],
                     'start_at' => $data['start_at'],
@@ -187,6 +197,7 @@ class ReservationController extends Controller
                     'approved_at' => null,
                     'reservation_number' => null,
                     'rejected_reason' => null,
+                    'event_request_type' => $eventAudience,
                 ]);
 
                 ReservationLog::create([
@@ -206,6 +217,42 @@ class ReservationController extends Controller
         return ApiResponse::message(
             'Reservation updated. It is now pending admin approval.',
             $updated->loadMissing(['space', 'user', 'approver', 'logs.actor'])->toArrayForUserApi()
+        );
+    }
+
+    public function cancel(Request $request, Reservation $reservation): JsonResponse
+    {
+        if ($reservation->user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $tz = (string) config('app.timezone');
+        $now = Carbon::now($tz);
+        if ($reservation->end_at && $reservation->end_at->copy()->timezone($tz)->lte($now)) {
+            return response()->json(['message' => 'Past reservations cannot be cancelled.'], 422);
+        }
+
+        if ($reservation->status === Reservation::STATUS_REJECTED) {
+            return response()->json(['message' => 'This reservation cannot be cancelled.'], 422);
+        }
+
+        if (! $reservation->canTransitionTo(Reservation::STATUS_CANCELLED)) {
+            return response()->json(['message' => 'This reservation cannot be cancelled.'], 422);
+        }
+
+        $reservation->update(['status' => Reservation::STATUS_CANCELLED]);
+
+        ReservationLog::create([
+            'reservation_id' => $reservation->id,
+            'actor_user_id' => $request->user()->id,
+            'actor_type' => ReservationLog::ACTOR_USER,
+            'action' => ReservationLog::ACTION_CANCEL,
+            'notes' => null,
+        ]);
+
+        return ApiResponse::message(
+            'Reservation cancelled.',
+            $reservation->fresh(['space', 'approver', 'logs.actor'])->loadMissing(['user'])->toArrayForUserApi()
         );
     }
 
@@ -230,6 +277,19 @@ class ReservationController extends Controller
         if (!$reservation->canTransitionTo(Reservation::STATUS_PENDING_APPROVAL)) {
             return response()->json(['message' => 'Invalid or expired confirmation link.'], 422);
         }
+        $reservation->load('space', 'user');
+        try {
+            ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
+                $reservation->space,
+                $reservation->user,
+                $reservation->event_request_type
+            );
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => collect($e->errors())->flatten()->first() ?? 'Reservation cannot be confirmed.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
         $reservation->update([
             'status' => Reservation::STATUS_PENDING_APPROVAL,
             'verified_at' => now(),
@@ -237,15 +297,7 @@ class ReservationController extends Controller
             'verification_expires_at' => null,
         ]);
         $reservation->load('space', 'user');
-        $admins = User::whereHas('role', function ($q) {
-            $q->where('slug', 'admin');
-        })->get();
-        if ($admins->isNotEmpty()) {
-            foreach ($admins as $admin) {
-                \Illuminate\Support\Facades\Mail::to($admin->email)
-                    ->send(new ReservationPendingApprovalAdminMail($reservation));
-            }
-        }
+        ReservationDeanRouting::sendPendingApprovalNotifications($reservation->fresh(['space', 'user']));
         return ApiResponse::message(
             'Reservation confirmed. It is now pending admin approval.',
             $reservation->loadMissing(['space', 'user', 'approver', 'logs.actor'])->toArrayForUserApi()

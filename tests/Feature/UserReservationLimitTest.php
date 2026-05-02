@@ -16,6 +16,12 @@ class UserReservationLimitTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeStudent(): User
     {
         $role = Role::firstOrCreate(
@@ -42,14 +48,14 @@ class UserReservationLimitTest extends TestCase
 
     private function payload(int $spaceId, \Illuminate\Support\Carbon $day, int $hour): array
     {
-        return [
+        return array_merge([
             'space_id' => $spaceId,
             'start_at' => $day->copy()->setTime($hour, 0)->toDateTimeString(),
             'end_at' => $day->copy()->setTime($hour + 1, 0)->toDateTimeString(),
             'purpose' => 'Test',
             'event_title' => 'Limit test',
             'participant_count' => 2,
-        ];
+        ], $this->organizationEventAudiencePayload());
     }
 
     public function test_user_with_fewer_than_3_active_reservations_can_create(): void

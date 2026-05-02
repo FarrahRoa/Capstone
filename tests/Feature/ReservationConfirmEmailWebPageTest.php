@@ -16,6 +16,12 @@ class ReservationConfirmEmailWebPageTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeSpace(): Space
     {
         return Space::create([
@@ -54,6 +60,7 @@ class ReservationConfirmEmailWebPageTest extends TestCase
             'purpose' => 'Test reservation',
             'verification_token' => Str::random(64),
             'verification_expires_at' => now()->addHour(),
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
     }
 
@@ -75,7 +82,7 @@ class ReservationConfirmEmailWebPageTest extends TestCase
         $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $reservation->status);
         $this->assertNotNull($reservation->verified_at);
 
-        Mail::assertSent(ReservationPendingApprovalAdminMail::class, 1);
+        Mail::assertSent(ReservationPendingApprovalAdminMail::class, 2);
     }
 
     public function test_invalid_token_renders_error_page_and_sends_no_mail(): void

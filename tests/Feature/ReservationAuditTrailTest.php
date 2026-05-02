@@ -20,6 +20,12 @@ class ReservationAuditTrailTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeUserWithRole(string $slug, string $name): User
     {
         $role = Role::firstOrCreate(
@@ -54,6 +60,7 @@ class ReservationAuditTrailTest extends TestCase
             'end_at' => now()->addDay()->setTime(10, 0),
             'status' => Reservation::STATUS_PENDING_APPROVAL,
             'purpose' => 'Audit trail test',
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
         ReservationLog::create([
             'reservation_id' => $reservation->id,
@@ -73,12 +80,12 @@ class ReservationAuditTrailTest extends TestCase
         Sanctum::actingAs($student);
         $space = $this->makeSpace();
 
-        $response = $this->postJson('/api/reservations', [
+        $response = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => now()->addDay()->setTime(9, 0)->toDateTimeString(),
             'end_at' => now()->addDay()->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Initial reservation',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $response->assertStatus(201);
         $reservationId = $response->json('data.id');

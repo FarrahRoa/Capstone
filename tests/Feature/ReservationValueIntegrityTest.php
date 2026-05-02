@@ -141,13 +141,15 @@ class ReservationValueIntegrityTest extends TestCase
             'is_active' => true,
         ]);
 
+        $this->seedSacdevDeanMappingForTests();
+
         Sanctum::actingAs($student);
-        $create = $this->postJson('/api/reservations', [
+        $create = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => now()->addDays(3)->setTime(9, 0)->toDateTimeString(),
             'end_at' => now()->addDays(3)->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Integrity sweep',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
         $create->assertStatus(201);
         $reservationId = $create->json('data.id');
         $this->assertNotNull($reservationId);

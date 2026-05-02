@@ -17,6 +17,12 @@ class BookingTimezoneHonestyTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     public function test_application_timezone_is_asia_manila_by_default(): void
     {
         $this->assertSame('Asia/Manila', config('app.timezone'));
@@ -87,12 +93,12 @@ class BookingTimezoneHonestyTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/reservations', [
+        $response = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => '2028-06-01T09:00:00+08:00',
             'end_at' => '2028-06-01T10:00:00+08:00',
             'purpose' => 'Manila offset payload',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $response->assertStatus(201);
         $response->assertJsonFragment([

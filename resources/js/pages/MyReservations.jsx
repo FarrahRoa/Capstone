@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import { paginatorRows, unwrapData } from '../utils/apiEnvelope';
-import { getReservationActionLabel, getReservationStatusLabel } from '../utils/reservationVocabulary';
-import { formatLogTime, formatReservationRange } from '../utils/timeDisplay';
+import { getEventRequestTypeLabel, getReservationActionLabel, getReservationStatusLabel } from '../utils/reservationVocabulary';
+import { formatDisplayDate, formatDisplayTime, formatLogTime } from '../utils/timeDisplay';
 import {
     bookingKindFromSpace,
     buildStartEndPayloadFromWallClock,
@@ -21,10 +21,20 @@ function canEditReservation(r) {
     return new Date(r.end_at).getTime() > Date.now();
 }
 
+function canCancelReservation(r) {
+    if (!r) return false;
+    if (r.status === 'cancelled' || r.status === 'rejected') return false;
+    if (!r.end_at) return false;
+    if (new Date(r.end_at).getTime() <= Date.now()) return false;
+    if (!['email_verification_pending', 'pending_approval', 'approved'].includes(r.status)) return false;
+    return true;
+}
+
 function EditReservationModal({ open, onClose, reservation, onSaved }) {
     const [spaces, setSpaces] = useState([]);
     const [spaceId, setSpaceId] = useState('');
     const [wc, setWc] = useState(() => ({ kind: 'standard', date: '', startTime: '09:00', endTime: '10:00' }));
+    const [eventRequestType, setEventRequestType] = useState('');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const prevSpaceIdRef = useRef('');
@@ -47,7 +57,17 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
         setSpaceId(sid);
         setWc(initialWallClockFieldsFromReservation(reservation));
         prevSpaceIdRef.current = sid;
+        setEventRequestType(reservation.event_request_type || '');
     }, [open, reservation]);
+
+    useEffect(() => {
+        if (!open || !spaceId || spaces.length === 0) return;
+        const sp = spaces.find((s) => String(s.id) === String(spaceId));
+        if (!sp) return;
+        if (!(sp.type === 'avr' || sp.type === 'lobby')) {
+            setEventRequestType('');
+        }
+    }, [open, spaceId, spaces]);
 
     useEffect(() => {
         if (!open || !reservation || !spaceId) return;
@@ -60,12 +80,17 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
     }, [open, reservation, spaceId, spaces]);
 
     const selectedSpace = spaces.find((s) => String(s.id) === String(spaceId));
+    const needsEventAudience = Boolean(selectedSpace && (selectedSpace.type === 'avr' || selectedSpace.type === 'lobby'));
 
     const onSave = async () => {
         if (!reservation) return;
         setError('');
         if (!spaceId) {
             setError('Select a library space.');
+            return;
+        }
+        if (needsEventAudience && !eventRequestType) {
+            setError('Select whether this reservation is an organization event or an employee event.');
             return;
         }
 
@@ -86,6 +111,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                 space_id: Number(spaceId),
                 start_at,
                 end_at,
+                ...(needsEventAudience ? { event_request_type: eventRequestType } : {}),
             });
             const updated = unwrapData(data);
             onSaved(updated);
@@ -96,6 +122,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                     || d?.errors?.slot?.[0]
                     || d?.errors?.start_at?.[0]
                     || d?.errors?.end_at?.[0]
+                    || d?.errors?.event_request_type?.[0]
                     || 'Failed to update reservation.',
             );
         } finally {
@@ -147,6 +174,21 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                             ))}
                         </select>
                     </label>
+
+                    {needsEventAudience && (
+                        <label className="block">
+                            <span className="block text-sm font-medium text-slate-700 mb-1">Event audience *</span>
+                            <select
+                                value={eventRequestType}
+                                onChange={(e) => setEventRequestType(e.target.value)}
+                                className={`w-full ${ui.select}`}
+                            >
+                                <option value="">Select one…</option>
+                                <option value="organization">Organization event</option>
+                                <option value="employee">Employee event</option>
+                            </select>
+                        </label>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Date *</label>
@@ -257,10 +299,27 @@ export default function MyReservations() {
     const [reservations, setReservations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(null);
+    const [cancellingId, setCancellingId] = useState(null);
 
     useEffect(() => {
         api.get('/reservations').then(({ data }) => setReservations(paginatorRows(data))).finally(() => setLoading(false));
     }, []);
+
+    const requestCancel = async (r) => {
+        if (!r || !canCancelReservation(r)) return;
+        if (!window.confirm('Cancel this reservation? This cannot be undone.')) return;
+        setCancellingId(r.id);
+        try {
+            const { data } = await api.post(`/reservations/${r.id}/cancel`);
+            const updated = unwrapData(data);
+            setReservations((prev) => prev.map((x) => (String(x.id) === String(updated.id) ? updated : x)));
+        } catch (err) {
+            const msg = err.response?.data?.message || 'Failed to cancel reservation.';
+            window.alert(msg);
+        } finally {
+            setCancellingId(null);
+        }
+    };
 
     if (loading) return <p className="text-slate-600">Loading…</p>;
 
@@ -277,9 +336,23 @@ export default function MyReservations() {
                             className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between ${ui.cardFlat}`}
                         >
                             <div className="min-w-0 flex-1">
-                                <p className="font-medium text-xu-primary">{r.space?.name}</p>
-                                <p className="text-sm text-slate-600">{formatReservationRange(r.start_at, r.end_at)}</p>
-                                <p className="text-sm text-slate-500">{getReservationStatusLabel(r.status)} {r.reservation_number && `• ${r.reservation_number}`}</p>
+                                <p className="font-medium text-xu-primary">{r.space?.name ?? '—'}</p>
+                                <p className="text-sm text-slate-600">
+                                    {formatDisplayDate(r.start_at)}
+                                    {formatDisplayDate(r.start_at) !== formatDisplayDate(r.end_at)
+                                        ? ` – ${formatDisplayDate(r.end_at)}`
+                                        : ''}
+                                </p>
+                                <p className="text-sm text-slate-600">
+                                    {formatDisplayTime(r.start_at)} – {formatDisplayTime(r.end_at)}
+                                </p>
+                                <p className="text-sm text-slate-500">{getReservationStatusLabel(r.status)}{r.reservation_number ? ` • ${r.reservation_number}` : ''}</p>
+                                {r.event_request_type ? (
+                                    <p className="text-sm text-slate-600 mt-0.5">
+                                        <span className="font-medium text-slate-700">Event audience:</span>{' '}
+                                        {getEventRequestTypeLabel(r.event_request_type)}
+                                    </p>
+                                ) : null}
                                 {r.logs?.length > 0 && (
                                     <div className="mt-2 border-t border-slate-100 pt-2">
                                         <p className="text-xs font-semibold text-slate-700 mb-1">History</p>
@@ -298,15 +371,27 @@ export default function MyReservations() {
                                     </div>
                                 )}
                             </div>
-                            {canEditReservation(r) && (
-                                <div className="shrink-0 pl-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setEditing(r)}
-                                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-xu-primary hover:border-xu-secondary/40 hover:bg-xu-page/40"
-                                    >
-                                        Edit
-                                    </button>
+                            {(canEditReservation(r) || canCancelReservation(r)) && (
+                                <div className="flex shrink-0 flex-col gap-2 pl-3 sm:flex-row sm:items-start">
+                                    {canEditReservation(r) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditing(r)}
+                                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-xu-primary hover:border-xu-secondary/40 hover:bg-xu-page/40"
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
+                                    {canCancelReservation(r) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => requestCancel(r)}
+                                            disabled={cancellingId != null && String(cancellingId) === String(r.id)}
+                                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:border-red-200 hover:bg-red-50 disabled:opacity-60"
+                                        >
+                                            {cancellingId != null && String(cancellingId) === String(r.id) ? 'Cancelling…' : 'Cancel'}
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>

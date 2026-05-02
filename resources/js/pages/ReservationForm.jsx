@@ -47,6 +47,7 @@ export default function ReservationForm() {
     const [eventTitle, setEventTitle] = useState('');
     const [eventDescription, setEventDescription] = useState('');
     const [participantCount, setParticipantCount] = useState('');
+    const [eventRequestType, setEventRequestType] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [guidelines, setGuidelines] = useState('');
@@ -56,6 +57,9 @@ export default function ReservationForm() {
     const selectedSpace = spaces.find((s) => String(s.id) === String(spaceIdVal));
     const bookingKind = bookingKindFromSpace(selectedSpace);
     const requiresEventMeta = bookingKind === 'avr_range' || bookingKind === 'half_hour_details';
+    const needsEventAudience = Boolean(
+        selectedSpace && (selectedSpace.type === 'avr' || selectedSpace.type === 'lobby'),
+    );
 
     const selectedRestriction = getSpaceRestrictionLabel(selectedSpace);
     const isSelectedSpaceEligible = isUserEligibleForSpace(user, selectedSpace);
@@ -98,6 +102,12 @@ export default function ReservationForm() {
             setRangeEndTime(endQ);
         }
     }, [startTimeParam, endTimeParam]);
+
+    useEffect(() => {
+        if (!needsEventAudience) {
+            setEventRequestType('');
+        }
+    }, [needsEventAudience, selectedSpace?.id]);
 
     useEffect(() => {
         api.get('/reservation-guidelines')
@@ -158,6 +168,12 @@ export default function ReservationForm() {
                 return;
             }
         }
+        if (needsEventAudience) {
+            if (!eventRequestType) {
+                setError('Select whether this reservation is an organization event or an employee event.');
+                return;
+            }
+        }
 
         setLoading(true);
         const { start_at, end_at } = buildStartEndPayloadFromWallClock(bookingKind, wallFields);
@@ -170,6 +186,7 @@ export default function ReservationForm() {
                 event_title: requiresEventMeta ? eventTitle : undefined,
                 event_description: requiresEventMeta ? eventDescription : undefined,
                 participant_count: requiresEventMeta ? Number(participantCount) : undefined,
+                ...(needsEventAudience ? { event_request_type: eventRequestType } : {}),
             });
             navigate('/my-reservations');
             alert('Reservation created. Please confirm via the link sent to your XU email.');
@@ -182,6 +199,7 @@ export default function ReservationForm() {
                     || d?.errors?.end_at?.[0]
                     || d?.errors?.event_title?.[0]
                     || d?.errors?.participant_count?.[0]
+                    || d?.errors?.event_request_type?.[0]
                     || d?.errors?.slot?.[0]
                     || d?.errors?.reservation?.[0]
                     || 'Failed to create reservation.'
@@ -337,6 +355,28 @@ export default function ReservationForm() {
                         </p>
                     )}
                 </div>
+                {needsEventAudience && (
+                    <div>
+                        <label htmlFor="reserve-event-audience" className="block text-sm font-medium text-slate-700 mb-1">
+                            Event audience *
+                        </label>
+                        <select
+                            id="reserve-event-audience"
+                            value={eventRequestType}
+                            onChange={(e) => setEventRequestType(e.target.value)}
+                            required
+                            className={`w-full ${ui.select}`}
+                            aria-describedby="reserve-timezone-hint"
+                        >
+                            <option value="">Select one…</option>
+                            <option value="organization">Organization event</option>
+                            <option value="employee">Employee event</option>
+                        </select>
+                        <p className="mt-1 text-xs text-slate-500">
+                            Organization events route to SACDEV for approval; employee events route to your saved college or office.
+                        </p>
+                    </div>
+                )}
                 <div>
                     <label htmlFor="reserve-date" className="block text-sm font-medium text-slate-700 mb-1">Date *</label>
                     <input

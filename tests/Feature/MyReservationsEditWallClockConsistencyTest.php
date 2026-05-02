@@ -19,6 +19,12 @@ class MyReservationsEditWallClockConsistencyTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeStudent(): User
     {
         $role = Role::firstOrCreate(
@@ -68,6 +74,7 @@ class MyReservationsEditWallClockConsistencyTest extends TestCase
             'end_at' => Carbon::parse('2026-04-12 10:00:00', $tz),
             'status' => Reservation::STATUS_PENDING_APPROVAL,
             'purpose' => 'Study',
+            'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
 
         $resp = $this->patchJson("/api/reservations/{$res->id}", [

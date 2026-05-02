@@ -15,6 +15,12 @@ class RoomReservationEligibilityTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeUserWithReservationCreate(array $extra = []): User
     {
         $role = Role::firstOrCreate(
@@ -184,7 +190,10 @@ class RoomReservationEligibilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/reservations', $this->reservationPayload($space->id));
+        $response = $this->postJson('/api/reservations', array_merge(
+            $this->reservationPayload($space->id),
+            $this->organizationEventAudiencePayload(),
+        ));
 
         $response->assertStatus(201);
         Mail::assertSent(ReservationVerificationMail::class);

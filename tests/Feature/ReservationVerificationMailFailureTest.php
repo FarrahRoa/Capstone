@@ -14,6 +14,12 @@ class ReservationVerificationMailFailureTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeStudent(): User
     {
         $role = Role::firstOrCreate(
@@ -50,12 +56,12 @@ class ReservationVerificationMailFailureTest extends TestCase
 
         $day = now()->addDay()->startOfDay();
 
-        $resp = $this->postJson('/api/reservations', [
+        $resp = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => $day->copy()->setTime(9, 0)->toDateTimeString(),
             'end_at' => $day->copy()->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Test',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(503);
         $resp->assertJsonFragment([

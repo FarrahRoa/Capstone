@@ -34,6 +34,7 @@ Route::middleware(['auth:sanctum', 'token.fresh'])->group(function () {
     Route::get('/reservations/{reservation}', [App\Http\Controllers\Api\ReservationController::class, 'show']);
     Route::post('/reservations', [App\Http\Controllers\Api\ReservationController::class, 'store']);
     Route::patch('/reservations/{reservation}', [App\Http\Controllers\Api\ReservationController::class, 'update']);
+    Route::post('/reservations/{reservation}/cancel', [App\Http\Controllers\Api\ReservationController::class, 'cancel']);
 });
 
 Route::middleware(['auth:sanctum', 'token.fresh', 'permission:reservation.view_all'])->prefix('admin')->name('admin.')->group(function () {

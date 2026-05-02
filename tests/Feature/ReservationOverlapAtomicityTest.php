@@ -16,6 +16,12 @@ class ReservationOverlapAtomicityTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     private function makeStudent(): User
     {
         $role = Role::firstOrCreate(
@@ -42,14 +48,14 @@ class ReservationOverlapAtomicityTest extends TestCase
 
     private function payload(int $spaceId, string $start, string $end): array
     {
-        return [
+        return array_merge([
             'space_id' => $spaceId,
             'start_at' => $start,
             'end_at' => $end,
             'purpose' => 'Test',
             'event_title' => 'Overlap test',
             'participant_count' => 2,
-        ];
+        ], $this->organizationEventAudiencePayload());
     }
 
     public function test_non_overlapping_reservation_succeeds(): void

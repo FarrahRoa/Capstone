@@ -4,8 +4,10 @@ namespace App\Http\Requests\Reservation;
 
 use App\Models\Reservation;
 use App\Models\Space;
+use App\Support\ReservationDeanRouting;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Throwable;
 
 class UpdateReservationRequest extends FormRequest
@@ -24,6 +26,11 @@ class UpdateReservationRequest extends FormRequest
             'space_id' => 'required|exists:spaces,id',
             'start_at' => 'required|date',
             'end_at' => 'required|date|after:start_at',
+            'event_request_type' => [
+                'nullable',
+                'string',
+                Rule::in([Reservation::EVENT_REQUEST_ORGANIZATION, Reservation::EVENT_REQUEST_EMPLOYEE]),
+            ],
         ];
     }
 
@@ -104,6 +111,39 @@ class UpdateReservationRequest extends FormRequest
                     );
                 }
             }
+
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $reservation = $this->route('reservation');
+            if (! $reservation instanceof Reservation) {
+                return;
+            }
+            if (! in_array($reservation->status, [Reservation::STATUS_PENDING_APPROVAL, Reservation::STATUS_APPROVED], true)) {
+                return;
+            }
+            $tz = (string) config('app.timezone');
+            $now = Carbon::now($tz);
+            if ($reservation->end_at && $reservation->end_at->copy()->timezone($tz)->lte($now)) {
+                return;
+            }
+
+            $target = Space::find((int) $this->input('space_id'));
+            if (! $target) {
+                return;
+            }
+
+            $effectiveAudience = trim((string) $this->input('event_request_type', ''));
+            if ($effectiveAudience === '') {
+                $effectiveAudience = (string) ($reservation->event_request_type ?? '');
+            }
+
+            ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
+                $target,
+                $this->user(),
+                ReservationDeanRouting::spaceUsesAvrLobbyAudienceRouting($target) ? $effectiveAudience : null
+            );
         });
     }
 }

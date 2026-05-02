@@ -21,6 +21,12 @@ class Reservation extends Model
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_CANCELLED = 'cancelled';
+
+    /** AVR/Lobby: routed to SACDEV dean mapping (organization) or requester affiliation mapping (employee). */
+    public const EVENT_REQUEST_ORGANIZATION = 'organization';
+
+    public const EVENT_REQUEST_EMPLOYEE = 'employee';
+
     public const STATUS_LABELS = [
         self::STATUS_EMAIL_VERIFICATION_PENDING => 'Pending verification',
         self::STATUS_PENDING_APPROVAL => 'Pending approval',
@@ -140,7 +146,7 @@ class Reservation extends Model
 
     protected $fillable = [
         'user_id', 'space_id', 'start_at', 'end_at', 'status', 'reservation_number',
-        'purpose', 'event_title', 'event_description', 'participant_count',
+        'purpose', 'event_title', 'event_description', 'participant_count', 'event_request_type',
         'verification_token', 'verification_expires_at', 'verified_at',
             'approved_by', 'approved_at', 'rejected_reason',
     ];

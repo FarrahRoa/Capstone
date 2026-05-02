@@ -14,6 +14,12 @@ class ApiResponseEnvelopeTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedSacdevDeanMappingForTests();
+    }
+
     public function test_spaces_index_wraps_collection_in_data(): void
     {
         Space::create([
@@ -96,12 +102,12 @@ class ApiResponseEnvelopeTest extends TestCase
         ]);
         Sanctum::actingAs($user);
 
-        $response = $this->postJson('/api/reservations', [
+        $response = $this->postJson('/api/reservations', array_merge([
             'space_id' => $space->id,
             'start_at' => now()->addDays(2)->setTime(9, 0)->toDateTimeString(),
             'end_at' => now()->addDays(2)->setTime(10, 0)->toDateTimeString(),
             'purpose' => 'Envelope test',
-        ]);
+        ], $this->organizationEventAudiencePayload()));
 
         $response->assertStatus(201);
         $response->assertJsonStructure(['message', 'data' => ['id', 'status']]);

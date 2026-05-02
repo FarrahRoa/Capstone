@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
 use App\Models\Reservation;
-use App\Models\User;
+use App\Support\ReservationDeanRouting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 
 class ReservationEmailConfirmationController extends Controller
 {
@@ -34,26 +33,31 @@ class ReservationEmailConfirmationController extends Controller
                     $success = false;
                     $message = 'Invalid or expired confirmation link.';
                 } else {
-                    $reservation->update([
-                        'status' => Reservation::STATUS_PENDING_APPROVAL,
-                        'verified_at' => now(),
-                        'verification_token' => null,
-                        'verification_expires_at' => null,
-                    ]);
-
                     $reservation->load('space', 'user');
-                    $admins = User::whereHas('role', function ($q) {
-                        $q->where('slug', 'admin');
-                    })->get();
-
-                    if ($admins->isNotEmpty()) {
-                        foreach ($admins as $admin) {
-                            Mail::to($admin->email)->send(new ReservationPendingApprovalAdminMail($reservation));
-                        }
+                    $confirmBlocked = false;
+                    try {
+                        ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
+                            $reservation->space,
+                            $reservation->user,
+                            $reservation->event_request_type
+                        );
+                    } catch (ValidationException $e) {
+                        $confirmBlocked = true;
+                        $message = collect($e->errors())->flatten()->first() ?? 'Reservation cannot be confirmed.';
                     }
+                    if (! $confirmBlocked) {
+                        $reservation->update([
+                            'status' => Reservation::STATUS_PENDING_APPROVAL,
+                            'verified_at' => now(),
+                            'verification_token' => null,
+                            'verification_expires_at' => null,
+                        ]);
+                        $reservation->load('space', 'user');
+                        ReservationDeanRouting::sendPendingApprovalNotifications($reservation->fresh(['space', 'user']));
 
-                    $success = true;
-                    $message = 'Reservation confirmed. It is now pending admin approval.';
+                        $success = true;
+                        $message = 'Reservation confirmed. It is now pending admin approval.';
+                    }
                 }
             }
         }

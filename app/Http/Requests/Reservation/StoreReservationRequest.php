@@ -4,8 +4,10 @@ namespace App\Http\Requests\Reservation;
 
 use App\Models\Reservation;
 use App\Models\Space;
+use App\Support\ReservationDeanRouting;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -29,6 +31,11 @@ class StoreReservationRequest extends FormRequest
             'event_title' => 'nullable|string|max:255',
             'event_description' => 'nullable|string|max:5000',
             'participant_count' => 'nullable|integer|min:1|max:10000',
+            'event_request_type' => [
+                'nullable',
+                'string',
+                Rule::in([Reservation::EVENT_REQUEST_ORGANIZATION, Reservation::EVENT_REQUEST_EMPLOYEE]),
+            ],
         ];
     }
 
@@ -136,6 +143,16 @@ class StoreReservationRequest extends FormRequest
                     $validator->errors()->add('slot', 'Selected time slot is not available.');
                 }
             }
+
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
+                $space,
+                $this->user(),
+                $this->input('event_request_type')
+            );
         });
     }
 }
