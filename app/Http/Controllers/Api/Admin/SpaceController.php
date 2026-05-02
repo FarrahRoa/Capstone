@@ -37,7 +37,7 @@ class SpaceController extends Controller
 
     public function store(StoreSpaceRequest $request): JsonResponse
     {
-        $data = $request->safe()->except(['image'])->all();
+        $data = $request->safe()->except(['image']);
         if ($request->hasFile('image')) {
             $data['image_path'] = $request->file('image')->store('spaces', 'public');
         }
@@ -49,7 +49,7 @@ class SpaceController extends Controller
 
     public function update(UpdateSpaceRequest $request, Space $space): JsonResponse
     {
-        $data = $request->safe()->except(['image', 'clear_image'])->all();
+        $data = $request->safe()->except(['image', 'clear_image']);
 
         if ($request->hasFile('image')) {
             $this->deleteStoredSpaceImage($space);
