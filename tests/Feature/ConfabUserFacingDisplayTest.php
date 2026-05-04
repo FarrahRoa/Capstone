@@ -100,6 +100,7 @@ class ConfabUserFacingDisplayTest extends TestCase
         $row = collect($payload['spaces'])->first(fn ($r) => (int) ($r['space']['id'] ?? 0) === $room->id);
         $this->assertNotNull($row);
         $this->assertSame('Confab', $row['space']['name']);
+        $this->assertSame('Space 7', $row['space']['schedule_label']);
     }
 
     public function test_user_reservation_show_masks_assignable_confab_name(): void

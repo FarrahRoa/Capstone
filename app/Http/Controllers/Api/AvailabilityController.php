@@ -100,21 +100,35 @@ class AvailabilityController extends Controller
         $dayStart = $date->copy();
         $dayEnd = $date->copy()->endOfDay()->addSecond();
 
+        $physicalSpaceIds = $spaces
+            ->filter(fn (Space $s) => ! $s->isConfabAssignmentPool())
+            ->pluck('id')
+            ->values()
+            ->all();
+
+        /** @var \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, Reservation>> $occupiedBySpace */
+        $occupiedBySpace = collect();
+        if ($physicalSpaceIds !== []) {
+            $occupiedBySpace = Reservation::query()
+                ->whereIn('space_id', $physicalSpaceIds)
+                ->where('status', Reservation::STATUS_APPROVED)
+                ->overlapping($dayStart, $dayEnd)
+                ->orderBy('start_at')
+                ->get(['space_id', 'start_at', 'end_at'])
+                ->groupBy('space_id');
+        }
+
         $rows = [];
         foreach ($spaces as $space) {
             $occupied = $space->isConfabAssignmentPool()
                 ? collect()
-                : Reservation::query()
-                    ->where('space_id', $space->id)
-                    ->where('status', Reservation::STATUS_APPROVED)
-                    ->overlapping($dayStart, $dayEnd)
-                    ->orderBy('start_at')
-                    ->get(['start_at', 'end_at']);
+                : ($occupiedBySpace->get($space->id) ?? collect());
 
             $rows[] = [
                 'space' => [
                     'id' => $space->id,
                     'name' => $space->userFacingName(),
+                    'schedule_label' => $space->scheduleOperationalDisplayName(),
                     'type' => $space->type,
                     'slug' => $space->slug,
                     'is_confab_pool' => (bool) $space->is_confab_pool,
@@ -217,8 +231,16 @@ class AvailabilityController extends Controller
             ->where('end_at', '>', $rangeStart)
             ->get(['space_id', 'start_at', 'end_at']);
 
+        $activeSpaceIds = Space::query()
+            ->where('is_active', true)
+            ->pluck('id');
+
         $dates = [];
         foreach ($reservations as $r) {
+            $sid = (int) $r->space_id;
+            if (! $activeSpaceIds->contains($sid)) {
+                continue;
+            }
             $start = $r->start_at->copy()->timezone($tz)->startOfDay();
             $end = $r->end_at->copy()->timezone($tz)->startOfDay();
             for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
@@ -229,7 +251,6 @@ class AvailabilityController extends Controller
                 if (!isset($dates[$ymd])) {
                     $dates[$ymd] = [];
                 }
-                $sid = (int) $r->space_id;
                 $dates[$ymd][$sid] = true;
             }
         }

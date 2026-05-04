@@ -134,6 +134,16 @@ class StoreReservationRequest extends FormRequest
             }
 
             if (! $space->isConfabAssignmentPool()) {
+                $capRaw = $space->capacity;
+                if ($capRaw !== null && (int) $capRaw > 0) {
+                    $pcVal = (int) $this->input('participant_count', 0);
+                    if ($pcVal > (int) $capRaw) {
+                        $validator->errors()->add('participant_count', 'Over the seating capacity.');
+
+                        return;
+                    }
+                }
+
                 $conflict = Reservation::conflictsExist(
                     (int) $this->input('space_id'),
                     $this->input('start_at'),

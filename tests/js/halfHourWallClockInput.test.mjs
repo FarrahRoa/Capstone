@@ -4,6 +4,8 @@
  */
 import assert from 'node:assert/strict';
 import {
+    formatReservationHourOption12h,
+    formatReservationMinuteOptionLabel,
     joinHalfHourWallClockHhmm,
     RESERVATION_TIME_HOUR_CHOICES,
     RESERVATION_TIME_MINUTE_CHOICES,
@@ -23,5 +25,13 @@ assert.deepEqual(splitHalfHourWallClockHhmm('09:15'), { hour: '09', minute: '00'
 assert.equal(joinHalfHourWallClockHhmm('14', '00'), '14:00');
 assert.equal(joinHalfHourWallClockHhmm('14', '30'), '14:30');
 assert.equal(joinHalfHourWallClockHhmm('14', '45'), '14:00');
+
+assert.equal(formatReservationHourOption12h('00'), '12 AM');
+assert.equal(formatReservationHourOption12h('09'), '9 AM');
+assert.equal(formatReservationHourOption12h('12'), '12 PM');
+assert.equal(formatReservationHourOption12h('13'), '1 PM');
+assert.equal(formatReservationHourOption12h('23'), '11 PM');
+assert.equal(formatReservationMinuteOptionLabel('00'), ':00');
+assert.equal(formatReservationMinuteOptionLabel('30'), ':30');
 
 console.log('halfHourWallClockInput tests: ok');

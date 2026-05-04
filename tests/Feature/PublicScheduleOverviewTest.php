@@ -83,6 +83,49 @@ class PublicScheduleOverviewTest extends TestCase
         $spacePayload = $row['space'];
         $this->assertArrayNotHasKey('capacity', $spacePayload);
         $this->assertArrayNotHasKey('user_id', $spacePayload);
+        $this->assertArrayHasKey('schedule_label', $spacePayload);
+    }
+
+    public function test_public_schedule_overview_without_space_id_returns_all_active_spaces(): void
+    {
+        $user = $this->seedUser();
+        $a = Space::create([
+            'name' => 'Multi Overview A',
+            'slug' => 'multi-ov-a-' . uniqid(),
+            'type' => 'avr',
+            'capacity' => 6,
+            'is_active' => true,
+        ]);
+        $b = Space::create([
+            'name' => 'Multi Overview B',
+            'slug' => 'multi-ov-b-' . uniqid(),
+            'type' => 'lobby',
+            'capacity' => 8,
+            'is_active' => true,
+        ]);
+
+        $start = Carbon::parse('2026-09-10 11:00:00', config('app.timezone'));
+        $end = Carbon::parse('2026-09-10 12:00:00', config('app.timezone'));
+        Reservation::create([
+            'user_id' => $user->id,
+            'space_id' => $a->id,
+            'start_at' => $start,
+            'end_at' => $end,
+            'status' => Reservation::STATUS_APPROVED,
+            'purpose' => 'Multi-space public overview',
+        ]);
+
+        $response = $this->getJson('/api/public/schedule-overview?date=2026-09-10');
+        $response->assertOk();
+        $ids = collect($response->json('data.spaces'))->pluck('space.id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains($a->id, $ids);
+        $this->assertContains($b->id, $ids);
+        $rowA = collect($response->json('data.spaces'))->first(fn ($r) => (int) ($r['space']['id'] ?? 0) === $a->id);
+        $this->assertNotNull($rowA);
+        $this->assertGreaterThanOrEqual(1, count($rowA['occupied_slots']));
+        $rowB = collect($response->json('data.spaces'))->first(fn ($r) => (int) ($r['space']['id'] ?? 0) === $b->id);
+        $this->assertNotNull($rowB);
+        $this->assertCount(0, $rowB['occupied_slots']);
     }
 
     public function test_pending_reservation_blocks_internal_availability_but_not_public_overview(): void

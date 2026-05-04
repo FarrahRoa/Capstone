@@ -1,15 +1,15 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { getSpaceIneligibilityMessage, getSpaceRestrictionLabel, isUserEligibleForSpace } from '../utils/spaceEligibility';
-import { BOOKING_TIMEZONE } from '../utils/timeDisplay';
+import { BOOKING_TIMEZONE, formatReservationRange } from '../utils/timeDisplay';
 import { manilaYmdFromInstant } from '../utils/manilaTime';
 import {
     bookingKindFromSpace,
     buildStartEndPayloadFromWallClock,
     halfHourHhmmFromOptionalQueryParam,
-    validateHalfHourTimesForKind,
+    validateWallClockWindowForKind,
 } from '../utils/reservationBookingTimes';
 import { unwrapData } from '../utils/apiEnvelope';
 import { ui } from '../theme';
@@ -70,8 +70,58 @@ export default function ReservationForm() {
 
     const isConfabPool = Boolean(selectedSpace?.is_confab_pool);
 
-    useEffect(() => {
-        api.get('/spaces').then(({ data }) => {
+    /** From `spaces.capacity` via /spaces; confab assignment pool is excluded (server skips enforcement there). */
+    const effectiveSeatingCapacity =
+        selectedSpace &&
+        !selectedSpace.is_confab_pool &&
+        selectedSpace.capacity != null &&
+        String(selectedSpace.capacity).trim() !== '' &&
+        Number(selectedSpace.capacity) > 0
+            ? Number(selectedSpace.capacity)
+            : null;
+
+    const participantCountNum = participantCount === '' ? NaN : Number(participantCount);
+    const participantOverCapacity =
+        requiresEventMeta &&
+        effectiveSeatingCapacity != null &&
+        participantCount !== '' &&
+        Number.isFinite(participantCountNum) &&
+        participantCountNum > effectiveSeatingCapacity;
+
+    const reservationWindowPreview = useMemo(() => {
+        if (!spaceIdVal || !selectedSpace) {
+            return null;
+        }
+        let wallFields;
+        if (bookingKind === 'avr_range') {
+            wallFields = {
+                rangeStartDate,
+                rangeStartTime,
+                rangeEndDate,
+                rangeEndTime,
+            };
+        } else if (bookingKind === 'half_hour_details') {
+            wallFields = { date, rangeStartTime, rangeEndTime };
+        } else {
+            wallFields = { date, startTime, endTime };
+        }
+        if (validateWallClockWindowForKind(bookingKind, wallFields)) {
+            return null;
+        }
+        const { start_at, end_at } = buildStartEndPayloadFromWallClock(bookingKind, wallFields);
+        return formatReservationRange(start_at, end_at);
+    }, [
+        spaceIdVal,
+        selectedSpace,
+        bookingKind,
+        rangeStartDate,
+        rangeStartTime,
+        rangeEndDate,
+        rangeEndTime,
+        date,
+        startTime,
+        endTime,
+    ]);
             const list = unwrapData(data);
             const raw = Array.isArray(list) ? list : [];
             setShowcaseSpaces(raw);
@@ -106,6 +156,54 @@ export default function ReservationForm() {
             setRangeEndTime(endQ);
         }
     }, [startTimeParam, endTimeParam]);
+
+    const wallSnapRef = useRef({});
+    wallSnapRef.current = {
+        startTime,
+        endTime,
+        rangeStartTime,
+        rangeEndTime,
+        date,
+        rangeStartDate,
+        rangeEndDate,
+    };
+
+    const prevBookingKindRef = useRef(null);
+    useEffect(() => {
+        const snap = wallSnapRef.current;
+        const prev = prevBookingKindRef.current;
+        if (prev !== null && prev !== bookingKind) {
+            if (prev === 'standard') {
+                if (bookingKind === 'half_hour_details' || bookingKind === 'avr_range') {
+                    setRangeStartTime(snap.startTime);
+                    setRangeEndTime(snap.endTime);
+                }
+                if (bookingKind === 'avr_range') {
+                    setRangeStartDate(snap.date);
+                    setRangeEndDate(snap.date);
+                }
+            } else if (prev === 'half_hour_details') {
+                if (bookingKind === 'standard') {
+                    setStartTime(snap.rangeStartTime);
+                    setEndTime(snap.rangeEndTime);
+                } else if (bookingKind === 'avr_range') {
+                    setRangeStartDate(snap.date);
+                    setRangeEndDate(snap.date);
+                }
+            } else if (prev === 'avr_range') {
+                if (bookingKind === 'standard') {
+                    setDate(snap.rangeStartDate);
+                    setStartTime(snap.rangeStartTime);
+                    setEndTime(snap.rangeEndTime);
+                } else if (bookingKind === 'half_hour_details') {
+                    setDate(snap.rangeStartDate);
+                    setRangeStartTime(snap.rangeStartTime);
+                    setRangeEndTime(snap.rangeEndTime);
+                }
+            }
+        }
+        prevBookingKindRef.current = bookingKind;
+    }, [bookingKind]);
 
     useEffect(() => {
         if (!needsEventAudience) {
@@ -151,10 +249,11 @@ export default function ReservationForm() {
             wallFields = { date, startTime, endTime };
         }
 
-        const timeErr = validateHalfHourTimesForKind(bookingKind, wallFields);
+        const timeErr = validateWallClockWindowForKind(bookingKind, wallFields);
         if (timeErr) {
+            const halfMsg = 'Times must use half-hour boundaries only (:00 or :30).';
             setError(
-                bookingKind === 'half_hour_details'
+                timeErr === halfMsg && bookingKind === 'half_hour_details'
                     ? 'For this space, times must be on the half-hour (:00 or :30).'
                     : timeErr,
             );
@@ -169,6 +268,14 @@ export default function ReservationForm() {
             const pc = Number(participantCount);
             if (!pc || pc < 1) {
                 setError('Participant count is required for this space.');
+                return;
+            }
+            if (
+                effectiveSeatingCapacity != null &&
+                Number.isFinite(pc) &&
+                pc > effectiveSeatingCapacity
+            ) {
+                setError('Over the seating capacity.');
                 return;
             }
         }
@@ -487,13 +594,25 @@ export default function ReservationForm() {
                                 id="reserve-participant-count"
                                 type="number"
                                 min="1"
+                                max={effectiveSeatingCapacity ?? undefined}
                                 step="1"
                                 value={participantCount}
                                 onChange={(e) => setParticipantCount(e.target.value)}
                                 required
                                 className={ui.input}
                                 placeholder="e.g. 50"
+                                aria-invalid={participantOverCapacity || undefined}
                             />
+                            {effectiveSeatingCapacity != null && (
+                                <p className="mt-1 text-xs text-slate-600">
+                                    Seating capacity for this room: <span className="font-medium text-slate-800">{effectiveSeatingCapacity}</span>.
+                                </p>
+                            )}
+                            {participantOverCapacity && (
+                                <p className="mt-1 text-sm text-red-700" role="alert">
+                                    Over the seating capacity.
+                                </p>
+                            )}
                         </div>
                     </>
                 ) : bookingKind === 'half_hour_details' ? (
@@ -553,13 +672,25 @@ export default function ReservationForm() {
                                 id="reserve-participant-count"
                                 type="number"
                                 min="1"
+                                max={effectiveSeatingCapacity ?? undefined}
                                 step="1"
                                 value={participantCount}
                                 onChange={(e) => setParticipantCount(e.target.value)}
                                 required
                                 className={ui.input}
                                 placeholder="e.g. 50"
+                                aria-invalid={participantOverCapacity || undefined}
                             />
+                            {effectiveSeatingCapacity != null && (
+                                <p className="mt-1 text-xs text-slate-600">
+                                    Seating capacity for this room: <span className="font-medium text-slate-800">{effectiveSeatingCapacity}</span>.
+                                </p>
+                            )}
+                            {participantOverCapacity && (
+                                <p className="mt-1 text-sm text-red-700" role="alert">
+                                    Over the seating capacity.
+                                </p>
+                            )}
                         </div>
                     </>
                 ) : (
@@ -594,7 +725,21 @@ export default function ReservationForm() {
                         </div>
                     </>
                 )}
-                <button type="submit" disabled={loading || (selectedSpace && !isSelectedSpaceEligible)} className={ui.btnPrimaryFull}>
+                {reservationWindowPreview && (
+                    <p className="text-sm text-slate-700" role="status">
+                        <span className="font-medium text-xu-primary">Reservation window:</span>{' '}
+                        {reservationWindowPreview}
+                    </p>
+                )}
+                <button
+                    type="submit"
+                    disabled={
+                        loading ||
+                        (selectedSpace && !isSelectedSpaceEligible) ||
+                        participantOverCapacity
+                    }
+                    className={ui.btnPrimaryFull}
+                >
                     Submit reservation
                 </button>
             </form>

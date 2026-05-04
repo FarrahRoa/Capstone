@@ -10,6 +10,7 @@ import {
     HALF_HOUR_HHMM_RE,
     initialWallClockFieldsFromReservation,
     validateHalfHourTimesForKind,
+    validateWallClockWindowForKind,
     wallClockFieldsFromInstants,
 } from '../../resources/js/utils/reservationBookingTimes.js';
 
@@ -56,6 +57,25 @@ assert.equal(confabFields.rangeEndTime, '11:30');
 const confabPayload = buildStartEndPayloadFromWallClock('half_hour_details', confabFields);
 assert.equal(confabPayload.start_at, '2026-04-12T09:00:00+08:00');
 assert.equal(confabPayload.end_at, '2026-04-12T11:30:00+08:00');
+
+assert.equal(
+    validateWallClockWindowForKind('half_hour_details', {
+        date: '2026-04-12',
+        rangeStartTime: '09:00',
+        rangeEndTime: '10:30',
+    }),
+    null,
+    'extended end (9:00–10:30) is one contiguous window',
+);
+
+assert.ok(
+    validateWallClockWindowForKind('half_hour_details', {
+        date: '2026-04-12',
+        rangeStartTime: '10:30',
+        rangeEndTime: '09:00',
+    }),
+    'end before start must fail validation',
+);
 
 const avrFields = wallClockFieldsFromInstants(
     'avr_range',

@@ -4,6 +4,31 @@ export const RESERVATION_TIME_HOUR_CHOICES = Array.from({ length: 24 }, (_, i) =
 /** Only :00 and :30 — used by reservation time UI and tests. */
 export const RESERVATION_TIME_MINUTE_CHOICES = ['00', '30'];
 
+/**
+ * 12-hour label for the hour dropdown (option value stays 24h HH for API payloads).
+ * e.g. 00 → 12 AM, 09 → 9 AM, 12 → 12 PM, 13 → 1 PM
+ *
+ * @param {string} hour24 padded 00–23
+ */
+export function formatReservationHourOption12h(hour24) {
+    const h = Math.trunc(Number(hour24));
+    if (!Number.isFinite(h) || h < 0 || h > 23) {
+        return String(hour24);
+    }
+    if (h === 0) return '12 AM';
+    if (h < 12) return `${h} AM`;
+    if (h === 12) return '12 PM';
+    return `${h - 12} PM`;
+}
+
+/**
+ * Minute option label (paired with hour for full wall time).
+ * @param {string} mm '00' | '30'
+ */
+export function formatReservationMinuteOptionLabel(mm) {
+    return mm === '30' ? ':30' : ':00';
+}
+
 function pad2(n) {
     return String(n).padStart(2, '0');
 }

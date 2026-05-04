@@ -115,6 +115,25 @@ export function validateHalfHourTimesForKind(kind, fields) {
 }
 
 /**
+ * Half-hour validation plus ordering: end must be strictly after start for the composed wall-clock window.
+ *
+ * @param {'avr_range'|'half_hour_details'|'standard'} kind
+ * @param {Record<string, string>} fields
+ * @returns {string|null}
+ */
+export function validateWallClockWindowForKind(kind, fields) {
+    const halfErr = validateHalfHourTimesForKind(kind, fields);
+    if (halfErr) {
+        return halfErr;
+    }
+    const { start_at, end_at } = buildStartEndPayloadFromWallClock(kind, fields);
+    if (new Date(start_at).getTime() >= new Date(end_at).getTime()) {
+        return 'End time must be after start time for your full reservation window.';
+    }
+    return null;
+}
+
+/**
  * @param {'avr_range'|'half_hour_details'|'standard'} kind
  * @param {Record<string, string>} fields
  * @returns {{ start_at: string, end_at: string }}

@@ -53,7 +53,7 @@ class AvrLobbyRangeReservationTest extends TestCase
             'end_at' => now()->addDays(2)->setTime(10, 30)->toDateTimeString(),
             'event_title' => 'AVR Event',
             'event_description' => 'Notes here',
-            'participant_count' => 50,
+            'participant_count' => 10,
         ], $this->organizationEventAudiencePayload()));
 
         $resp->assertStatus(201);
@@ -61,11 +61,33 @@ class AvrLobbyRangeReservationTest extends TestCase
             'space_id' => $avr->id,
             'event_title' => 'AVR Event',
             'event_description' => 'Notes here',
-            'participant_count' => 50,
+            'participant_count' => 10,
             'status' => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
             'event_request_type' => Reservation::EVENT_REQUEST_ORGANIZATION,
         ]);
         Mail::assertSent(ReservationVerificationMail::class);
+    }
+
+    public function test_avr_rejects_participant_count_over_space_capacity(): void
+    {
+        Mail::fake();
+        $user = $this->makeStudent();
+        Sanctum::actingAs($user);
+
+        $avr = $this->makeSpace('avr', 'avr', 'AVR');
+
+        $resp = $this->postJson('/api/reservations', array_merge([
+            'space_id' => $avr->id,
+            'start_at' => now()->addDays(2)->setTime(9, 0)->toDateTimeString(),
+            'end_at' => now()->addDays(2)->setTime(10, 0)->toDateTimeString(),
+            'event_title' => 'Too many guests',
+            'participant_count' => 11,
+        ], $this->organizationEventAudiencePayload()));
+
+        $resp->assertStatus(422);
+        $resp->assertJsonValidationErrors(['participant_count']);
+        $this->assertSame('Over the seating capacity.', $resp->json('errors.participant_count.0'));
+        Mail::assertNothingSent();
     }
 
     public function test_lobby_rejects_minutes_not_00_or_30(): void

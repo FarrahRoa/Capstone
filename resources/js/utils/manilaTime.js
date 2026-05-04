@@ -276,6 +276,76 @@ export function buildManilaHalfHourSlots(dateYmd, reserved, dayStartHour, dayEnd
     return slots;
 }
 
+/**
+ * Half-hour grid for the public (login) schedule: per-slot lists of busy vs still-open spaces.
+ *
+ * @param {string} dateYmd
+ * @param {{ space: { id: string|number, name?: string, schedule_label?: string, is_confab_pool?: boolean }, occupied_slots: { start_at: string, end_at: string }[] }[]} scheduleRows from GET /public/schedule-overview
+ * @param {number} dayStartHour
+ * @param {number} dayEndHour
+ * @returns {{ hourStart: number, minuteStart: number, hourEnd: number, minuteEnd: number, busySpaces: { id: string|number, label: string }[], freeSpaces: { id: string|number, label: string }[] }[]}
+ */
+export function buildPublicAggregatedHalfHourSlots(dateYmd, scheduleRows, dayStartHour, dayEndHour) {
+    const rows = Array.isArray(scheduleRows)
+        ? scheduleRows.filter((r) => r?.space && !r.space.is_confab_pool)
+        : [];
+    if (rows.length === 0) {
+        return null;
+    }
+    const slots = [];
+    const toMs = (h, m) => Date.parse(`${dateYmd}T${pad2(h)}:${pad2(m)}:00${MANILA_OFFSET}`);
+    for (let h = dayStartHour; h < dayEndHour; h++) {
+        for (const m of [0, 30]) {
+            const startMs = toMs(h, m);
+            const endMs = toMs(m === 0 ? h : h + 1, m === 0 ? 30 : 0);
+            const endHour = m === 0 ? h : h + 1;
+            const endMinute = m === 0 ? 30 : 0;
+
+            const busySpaces = [];
+            for (const row of rows) {
+                const sid = row.space.id;
+                let hit = false;
+                const occ = Array.isArray(row.occupied_slots) ? row.occupied_slots : [];
+                for (const r of occ) {
+                    const rs = new Date(r.start_at).getTime();
+                    const re = new Date(r.end_at).getTime();
+                    if (overlapsMs(startMs, endMs, rs, re)) {
+                        hit = true;
+                        break;
+                    }
+                }
+                if (hit) {
+                    const label =
+                        (row.space.schedule_label && String(row.space.schedule_label).trim()) ||
+                        (row.space.name && String(row.space.name).trim()) ||
+                        `Space ${sid}`;
+                    busySpaces.push({ id: sid, label });
+                }
+            }
+            const busyId = new Set(busySpaces.map((b) => String(b.id)));
+            const freeSpaces = [];
+            for (const row of rows) {
+                const sid = row.space.id;
+                if (busyId.has(String(sid))) continue;
+                const label =
+                    (row.space.schedule_label && String(row.space.schedule_label).trim()) ||
+                    (row.space.name && String(row.space.name).trim()) ||
+                    `Space ${sid}`;
+                freeSpaces.push({ id: sid, label });
+            }
+            slots.push({
+                hourStart: h,
+                minuteStart: m,
+                hourEnd: endHour,
+                minuteEnd: endMinute,
+                busySpaces,
+                freeSpaces,
+            });
+        }
+    }
+    return slots;
+}
+
 export function formatManilaHalfHourSlotLabel(hourStart, minuteStart, hourEnd, minuteEnd) {
     return `${formatManilaWallTime12(hourStart, minuteStart)} – ${formatManilaWallTime12(hourEnd, minuteEnd)}`;
 }

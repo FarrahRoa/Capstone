@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import api from '../../api';
 import { useAuth } from '../../contexts/AuthContext';
 import { isAdminScheduleViewer } from '../../utils/isAdminScheduleViewer';
-import { userFacingSpaceName } from '../../utils/userFacingSpaceName';
+import { userFacingSpaceName, scheduleBoardLabelFromSpace } from '../../utils/userFacingSpaceName';
 import { getSpaceIneligibilityMessage, getSpaceRestrictionLabel, isUserEligibleForSpace } from '../../utils/spaceEligibility';
 import {
     buildManilaHalfHourSlots,
+    buildPublicAggregatedHalfHourSlots,
     buildManilaMonthCells,
     buildManilaWeekStripContaining,
     formatManilaHalfHourSlotLabel,
@@ -21,7 +22,7 @@ import {
 } from '../../utils/manilaTime';
 import { unwrapData } from '../../utils/apiEnvelope';
 import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
-import { colorForSpaceId } from '../../utils/spaceColors';
+import { colorForOperationalSpaceId, colorForSpaceId } from '../../utils/spaceColors';
 import SpaceShowcaseCarousel from './SpaceShowcaseCarousel';
 
 const DAY_START_HOUR = 9;
@@ -45,13 +46,14 @@ function abbreviateSpaceName(name) {
  * @param {Array<string|number>} spaceIds
  * @param {Array<{ id: number|string, name: string }>} spaces
  */
-function overviewSpaceRows(spaceIds, spaces) {
+function overviewSpaceRows(spaceIds, spaces, readOnly = false) {
     if (!Array.isArray(spaceIds) || spaceIds.length === 0) return [];
     const out = [];
     const seen = new Set();
+    const labelFn = readOnly ? scheduleBoardLabelFromSpace : userFacingSpaceName;
     for (const id of spaceIds) {
         const s = spaces.find((x) => String(x.id) === String(id));
-        const row = s ? { ...s, name: userFacingSpaceName(s) } : { id, name: `Space ${id}` };
+        const row = s ? { ...s, name: labelFn(s) } : { id, name: `Space ${id}` };
         if (seen.has(String(row.id))) continue;
         seen.add(String(row.id));
         out.push(row);
@@ -83,6 +85,12 @@ export default function BookingCalendar({
         return spaces.filter((s) => !(s?.type === 'confab' && !s?.is_confab_pool));
     }, [spaces, adminSchedule]);
 
+    /** Physical / bookable locations for the public board (excludes confab assignment pool). */
+    const timelineSpaces = useMemo(
+        () => spaces.filter((s) => !s?.is_confab_pool),
+        [spaces]
+    );
+
     const [cal, setCal] = useState(initialManilaCalendarState);
     const { selectedYmd, viewYear, viewMonth } = cal;
     const [selectedSpaceId, setSelectedSpaceId] = useState('');
@@ -108,6 +116,9 @@ export default function BookingCalendar({
     }, []);
 
     useEffect(() => {
+        if (readOnly) {
+            return;
+        }
         if (bookableSpaces.length === 0) {
             setSelectedSpaceId('');
             return;
@@ -116,14 +127,15 @@ export default function BookingCalendar({
         if (!selectedSpaceId || !exists) {
             setSelectedSpaceId(String(bookableSpaces[0].id));
         }
-    }, [bookableSpaces, selectedSpaceId]);
+    }, [bookableSpaces, selectedSpaceId, readOnly]);
 
     const isPastDay = useCallback((ymd) => String(ymd) < String(todayYmd), [todayYmd]);
 
     const weekStripYmds = useMemo(() => buildManilaWeekStripContaining(selectedYmd), [selectedYmd]);
 
     const [reservedSlots, setReservedSlots] = useState([]);
-    const [loadingSlots, setLoadingSlots] = useState(false);
+    const [publicScheduleRows, setPublicScheduleRows] = useState([]);
+    const [loadingSlots, setLoadingSlots] = useState(() => Boolean(readOnly));
     const [loginRequiredNudge, setLoginRequiredNudge] = useState('');
     const [fullyBookedYmd, setFullyBookedYmd] = useState({});
     const [summaryLoading, setSummaryLoading] = useState(false);
@@ -161,6 +173,11 @@ export default function BookingCalendar({
     }, [cellYmdBounds.min, cellYmdBounds.max, readOnly]);
 
     useEffect(() => {
+        if (readOnly) {
+            setFullyBookedYmd({});
+            setSummaryLoading(false);
+            return;
+        }
         if (!selectedSpaceId || !cellYmdBounds.min || !cellYmdBounds.max) {
             setFullyBookedYmd({});
             setSummaryLoading(false);
@@ -168,7 +185,7 @@ export default function BookingCalendar({
         }
         let cancelled = false;
         setSummaryLoading(true);
-        api.get(readOnly ? '/public/availability/month-summary' : '/availability/month-summary', {
+        api.get('/availability/month-summary', {
             params: {
                 space_id: selectedSpaceId,
                 from: cellYmdBounds.min,
@@ -202,6 +219,31 @@ export default function BookingCalendar({
     );
 
     useEffect(() => {
+        if (readOnly) {
+            if (!selectedYmd) {
+                setPublicScheduleRows([]);
+                return;
+            }
+            let cancelled = false;
+            setLoadingSlots(true);
+            setLoginRequiredNudge('');
+            api.get('/public/schedule-overview', { params: { date: selectedYmd } })
+                .then(({ data }) => {
+                    if (cancelled) return;
+                    const payload = unwrapData(data);
+                    setPublicScheduleRows(Array.isArray(payload?.spaces) ? payload.spaces : []);
+                })
+                .catch(() => {
+                    if (!cancelled) setPublicScheduleRows([]);
+                })
+                .finally(() => {
+                    if (!cancelled) setLoadingSlots(false);
+                });
+            return () => {
+                cancelled = true;
+            };
+        }
+
         if (!selectedSpaceId || !selectedYmd) {
             setReservedSlots([]);
             return;
@@ -209,25 +251,14 @@ export default function BookingCalendar({
         setLoadingSlots(true);
         setLoginRequiredNudge('');
 
-        const req = readOnly
-            ? api.get('/public/schedule-overview', { params: { date: selectedYmd, space_id: selectedSpaceId } })
-            : api.get('/availability', { params: { date: selectedYmd, space_id: selectedSpaceId } });
-
-        req.then(({ data }) => {
-            if (readOnly) {
-                const payload = unwrapData(data);
-                const rows = Array.isArray(payload?.spaces) ? payload.spaces : [];
-                const row = rows.find((r) => String(r?.space?.id) === String(selectedSpaceId));
-                setReservedSlots(Array.isArray(row?.occupied_slots) ? row.occupied_slots : []);
-                return;
-            }
-
-            const rows = unwrapData(data);
-            const row = Array.isArray(rows)
-                ? rows.find((r) => String(r.space?.id) === String(selectedSpaceId))
-                : null;
-            setReservedSlots(row?.reserved_slots || []);
-        })
+        api.get('/availability', { params: { date: selectedYmd, space_id: selectedSpaceId } })
+            .then(({ data }) => {
+                const rows = unwrapData(data);
+                const row = Array.isArray(rows)
+                    ? rows.find((r) => String(r.space?.id) === String(selectedSpaceId))
+                    : null;
+                setReservedSlots(row?.reserved_slots || []);
+            })
             .catch(() => setReservedSlots([]))
             .finally(() => setLoadingSlots(false));
     }, [selectedYmd, selectedSpaceId, readOnly]);
@@ -240,9 +271,18 @@ export default function BookingCalendar({
         () => buildManilaHalfHourSlots(selectedYmd, reservedSlots, DAY_START_HOUR, DAY_END_HOUR),
         [selectedYmd, reservedSlots]
     );
+    const aggregatedSlots = useMemo(
+        () =>
+            readOnly
+                ? buildPublicAggregatedHalfHourSlots(selectedYmd, publicScheduleRows, DAY_START_HOUR, DAY_END_HOUR)
+                : null,
+        [readOnly, selectedYmd, publicScheduleRows]
+    );
     const spacesWithColors = useMemo(() => {
-        return bookableSpaces.map((s) => ({ ...s, __color: colorForSpaceId(s.id, spaces) }));
-    }, [bookableSpaces, spaces]);
+        const src = readOnly ? timelineSpaces : bookableSpaces;
+        const pickColor = readOnly ? colorForOperationalSpaceId : colorForSpaceId;
+        return src.map((s) => ({ ...s, __color: pickColor(s.id, spaces) }));
+    }, [readOnly, timelineSpaces, bookableSpaces, spaces]);
 
     const goPrevMonth = useCallback(() => {
         setCal((c) => {
@@ -356,6 +396,11 @@ export default function BookingCalendar({
                             )}
                         </div>
                         <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 lg:max-w-md xl:max-w-none xl:w-auto">
+                            {readOnly ? (
+                                <p className="max-w-md text-xs font-medium leading-snug text-slate-600 sm:text-sm">
+                                    Showing <span className="text-xu-primary">approved reservations</span> across all active library spaces for the selected day (half-hour grid). Each colored tag matches the legend.
+                                </p>
+                            ) : (
                             <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-slate-600 sm:max-w-md md:min-w-[12rem]">
                                 <span className="text-xu-primary">Library space</span>
                                 <select
@@ -375,6 +420,7 @@ export default function BookingCalendar({
                                     })}
                                 </select>
                             </label>
+                            )}
                             {!readOnly && restrictionLabel && (
                                 <span className="self-start text-xs font-medium text-amber-900 bg-amber-50 border border-amber-200/90 rounded-lg px-2.5 py-1.5">
                                     {restrictionLabel}
@@ -382,7 +428,7 @@ export default function BookingCalendar({
                             )}
                         </div>
                     </div>
-                    {bookableSpaces.length > 0 && (
+                    {spacesWithColors.length > 0 && (
                         <div className="mt-3 flex flex-col gap-2">
                             <div className="flex items-center gap-3">
                                     <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Overview legend</span>
@@ -396,10 +442,12 @@ export default function BookingCalendar({
                                     <span
                                         key={s.id}
                                         className={`inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 shadow-sm ring-1 ${s.__color.ring}`}
-                                        title={userFacingSpaceName(s)}
+                                        title={readOnly ? scheduleBoardLabelFromSpace(s) : userFacingSpaceName(s)}
                                     >
                                         <span className={`h-2.5 w-2.5 rounded-full ${s.__color.bg}`} aria-hidden="true" />
-                                        <span className="max-w-[14rem] truncate sm:max-w-none">{userFacingSpaceName(s)}</span>
+                                        <span className="max-w-[14rem] truncate sm:max-w-none">
+                                            {readOnly ? scheduleBoardLabelFromSpace(s) : userFacingSpaceName(s)}
+                                        </span>
                                     </span>
                                 ))}
                                 </div>
@@ -424,7 +472,7 @@ export default function BookingCalendar({
                             const isPast = isPastDay(ymd);
                             const full = isFullyBooked(ymd);
                             const stripIds = Array.isArray(overviewByDate?.[ymd]) ? overviewByDate[ymd] : [];
-                            const stripRows = overviewSpaceRows(stripIds, spaces);
+                            const stripRows = overviewSpaceRows(stripIds, spaces, readOnly);
                             const stripOverviewTip =
                                 stripRows.length > 0
                                     ? `Spaces with reservations: ${stripRows.map((s) => s.name).join(', ')}`
@@ -544,7 +592,7 @@ export default function BookingCalendar({
                                         const isPast = isPastDay(cell.ymd);
                                         const full = isFullyBooked(cell.ymd);
                                         const spaceIds = Array.isArray(overviewByDate?.[cell.ymd]) ? overviewByDate[cell.ymd] : [];
-                                        const overviewRows = overviewSpaceRows(spaceIds, spaces);
+                                        const overviewRows = overviewSpaceRows(spaceIds, spaces, readOnly);
                                         const overviewNameList = overviewRows.map((s) => s.name).join(', ');
                                         const overviewTooltip =
                                             overviewRows.length > 0
@@ -628,7 +676,9 @@ export default function BookingCalendar({
                                                         {showNamedOverview && (
                                                             <span className="flex max-w-full flex-wrap items-center justify-center gap-1">
                                                                 {namedPreview.map((s) => {
-                                                                    const c = colorForSpaceId(s.id, spaces);
+                                                                    const c = readOnly
+                                                                        ? colorForOperationalSpaceId(s.id, spaces)
+                                                                        : colorForSpaceId(s.id, spaces);
                                                                     return (
                                                                         <span
                                                                             key={s.id}
@@ -665,25 +715,42 @@ export default function BookingCalendar({
                             <div className="border-b border-slate-200/80 px-4 py-3 sm:px-5">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                     <div>
-                                        {selectedSpaceId && selectedSpace && (
-                                            <p className="text-xs font-semibold uppercase tracking-wide text-xu-secondary" id="booking-selected-space">
-                                                Selected space
-                                            </p>
+                                        {readOnly ? (
+                                            <>
+                                                <p
+                                                    className="text-xs font-semibold uppercase tracking-wide text-xu-secondary"
+                                                    id="booking-selected-space"
+                                                >
+                                                    All library spaces
+                                                </p>
+                                                <p className="font-serif text-lg font-semibold text-xu-primary">Combined day view</p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                {selectedSpaceId && selectedSpace && (
+                                                    <p
+                                                        className="text-xs font-semibold uppercase tracking-wide text-xu-secondary"
+                                                        id="booking-selected-space"
+                                                    >
+                                                        Selected space
+                                                    </p>
+                                                )}
+                                                <p className="font-serif text-lg font-semibold text-xu-primary">
+                                                    {selectedSpace ? userFacingSpaceName(selectedSpace) : 'No room selected'}
+                                                </p>
+                                            </>
                                         )}
-                                        <p className="font-serif text-lg font-semibold text-xu-primary">
-                                            {selectedSpace ? userFacingSpaceName(selectedSpace) : 'No room selected'}
-                                        </p>
                                         <p className="text-sm text-slate-600">{manilaSelectedDayTitle(selectedYmd)}</p>
                                         <p className="mt-0.5 text-xs tabular-nums text-slate-500">{selectedYmd} · {BOOKING_TIMEZONE}</p>
                                     </div>
                                     <div className="flex flex-wrap gap-3 text-xs text-slate-600">
                                         <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
                                             <span className="h-2 w-2 rounded-sm border-2 border-xu-secondary/50 bg-white" />
-                                            Available
+                                            {readOnly ? 'Some space still open' : 'Available'}
                                         </span>
                                         <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
                                             <span className="h-2 w-2 rounded-sm bg-slate-300 border border-slate-400/60" />
-                                            Not available
+                                            {readOnly ? 'All spaces booked' : 'Not available'}
                                         </span>
                                     </div>
                                 </div>
@@ -691,11 +758,17 @@ export default function BookingCalendar({
                                     <span>
                                         <span className="font-medium text-xu-primary">Slots:</span> half-hour grid (:00 / :30)
                                     </span>
-                                    {selectedSpaceId && (
+                                    {readOnly ? (
                                         <span>
-                                            <span className="font-medium text-xu-primary">Calendar:</span> dashed{' '}
-                                            <span className="font-semibold">Full</span> = no open slots for this room that day
+                                            <span className="font-medium text-xu-primary">Tags:</span> colored pills match the legend (space name in tooltip)
                                         </span>
+                                    ) : (
+                                        selectedSpaceId && (
+                                            <span>
+                                                <span className="font-medium text-xu-primary">Calendar:</span> dashed{' '}
+                                                <span className="font-semibold">Full</span> = no open slots for this room that day
+                                            </span>
+                                        )
                                     )}
                                 </div>
                                 {readOnly && loginRequiredNudge && (
@@ -705,7 +778,7 @@ export default function BookingCalendar({
                                 )}
                             </div>
 
-                            {!selectedSpaceId && (
+                            {!readOnly && !selectedSpaceId && (
                                 <div className="flex flex-1 items-center justify-center px-6 py-12">
                                     <p className="max-w-sm text-center text-sm text-slate-500">
                                         Select a library space above to load the schedule for{' '}
@@ -714,7 +787,21 @@ export default function BookingCalendar({
                                 </div>
                             )}
 
-                            {selectedSpaceId && loadingSlots && (
+                            {readOnly && loadingSlots && (
+                                <div className="flex flex-1 items-center justify-center py-16">
+                                    <p className="text-sm font-medium text-slate-500">Loading schedule…</p>
+                                </div>
+                            )}
+
+                            {readOnly && !loadingSlots && aggregatedSlots === null && (
+                                <div className="flex flex-1 items-center justify-center px-6 py-12">
+                                    <p className="max-w-sm text-center text-sm text-slate-500">
+                                        No active bookable spaces were returned for this date. Refresh the page or try again later.
+                                    </p>
+                                </div>
+                            )}
+
+                            {!readOnly && selectedSpaceId && loadingSlots && (
                                 <div className="flex flex-1 items-center justify-center py-16">
                                     <p className="text-sm font-medium text-slate-500">Loading schedule…</p>
                                 </div>
@@ -726,7 +813,123 @@ export default function BookingCalendar({
                                 </div>
                             )}
 
-                            {selectedSpaceId && !loadingSlots && eligible && (
+                            {readOnly && !loadingSlots && Array.isArray(aggregatedSlots) && aggregatedSlots.length > 0 && (
+                                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                                    {aggregatedSlots.every((ag) => ag.freeSpaces.length === 0) && (
+                                        <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 sm:mx-5">
+                                            No open half-hour windows — every active space below is reserved for this date.
+                                        </div>
+                                    )}
+                                    <div
+                                        className="mt-2 min-h-0 max-h-[min(28rem,50vh,65dvh)] flex-1 overflow-y-auto overflow-x-auto border-t border-slate-200/80 bg-white [scrollbar-width:thin]"
+                                        role="region"
+                                        aria-label={`Combined schedule for all library spaces on ${selectedYmd}`}
+                                    >
+                                        <ul className="m-0 min-w-0 list-none divide-y divide-slate-100 p-0">
+                                            {aggregatedSlots.map((aslot) => {
+                                                const label = formatManilaHalfHourSlotLabel(
+                                                    aslot.hourStart,
+                                                    aslot.minuteStart,
+                                                    aslot.hourEnd,
+                                                    aslot.minuteEnd
+                                                );
+                                                const rowKey = `pub-all-${selectedYmd}-${aslot.hourStart}-${aslot.minuteStart}`;
+                                                const gutter = formatManilaSlotGutterTimes(aslot);
+                                                const noneBusy = aslot.busySpaces.length === 0;
+                                                const allBusy = aslot.busySpaces.length > 0 && aslot.freeSpaces.length === 0;
+                                                const busyTitle = aslot.busySpaces.map((b) => b.label).join(', ');
+                                                const freeTitle = aslot.freeSpaces.map((f) => f.label).join(', ');
+
+                                                if (noneBusy) {
+                                                    return (
+                                                        <li key={rowKey} className="list-none">
+                                                            <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
+                                                                <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-white py-3 pr-2 pl-1 text-right">
+                                                                    <span className="text-xs font-bold tabular-nums text-xu-primary">{gutter.start}</span>
+                                                                    <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
+                                                                </div>
+                                                                <div className="p-2 sm:p-2.5">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setLoginRequiredNudge('Log in first to reserve a slot.')}
+                                                                        aria-label={`Available ${label} — log in to reserve`}
+                                                                        className="group flex h-full min-h-[3rem] w-full items-center justify-between gap-2 rounded-lg border-2 border-emerald-200/90 bg-emerald-50/50 px-3 py-2 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xu-secondary"
+                                                                    >
+                                                                        <div className="min-w-0 text-left">
+                                                                            <p className="text-sm font-semibold text-emerald-900">{label}</p>
+                                                                            <p className="text-xs text-emerald-800/90">All spaces open · log in to reserve</p>
+                                                                        </div>
+                                                                        <span className="shrink-0 rounded-md bg-emerald-600/10 px-2 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">
+                                                                            Log in
+                                                                        </span>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <li key={rowKey} className="list-none">
+                                                        <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
+                                                            <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-slate-50 py-3 pr-2 pl-1 text-right">
+                                                                <span className="text-xs font-bold tabular-nums text-slate-500">{gutter.start}</span>
+                                                                <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
+                                                            </div>
+                                                            <div className="p-2 sm:p-2.5">
+                                                                <div
+                                                                    title={
+                                                                        allBusy
+                                                                            ? `Reserved (all spaces): ${busyTitle}`
+                                                                            : `Reserved: ${busyTitle}. Open: ${freeTitle}`
+                                                                    }
+                                                                    aria-label={
+                                                                        allBusy
+                                                                            ? `${label} — reserved in all spaces`
+                                                                            : `${label} — reserved in some spaces; others still open`
+                                                                    }
+                                                                    className="flex min-h-[3rem] flex-col gap-2 rounded-lg border border-slate-300/90 bg-[repeating-linear-gradient(135deg,transparent,transparent_6px,rgba(148,163,184,0.12)_6px,rgba(148,163,184,0.12)_7px)] bg-slate-100/90 px-3 py-2 shadow-inner"
+                                                                >
+                                                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                                                        <div className="min-w-0">
+                                                                            <p className="text-sm font-semibold text-slate-700">{label}</p>
+                                                                            <p className="text-xs font-medium text-slate-600">Reserved · {busyTitle}</p>
+                                                                        </div>
+                                                                        <span className="shrink-0 rounded-md border border-slate-400/50 bg-slate-200/80 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                                                                            {allBusy ? 'All booked' : 'Partial'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex min-w-0 flex-wrap gap-1">
+                                                                        {aslot.busySpaces.map((b) => {
+                                                                            const c = colorForOperationalSpaceId(b.id, spaces);
+                                                                            return (
+                                                                                <span
+                                                                                    key={b.id}
+                                                                                    className={`inline-flex max-w-full items-center rounded-md px-2 py-0.5 text-[10px] font-bold leading-tight text-white shadow-sm ring-1 ring-black/10 sm:text-xs ${c.bg}`}
+                                                                                    title={b.label}
+                                                                                >
+                                                                                    <span className="truncate">{abbreviateSpaceName(b.label)}</span>
+                                                                                </span>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                    {!allBusy && (
+                                                                        <p className="text-xs font-medium text-emerald-900">
+                                                                            Still open: {freeTitle}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!readOnly && selectedSpaceId && !loadingSlots && eligible && (
                                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                                     {slots.every((s) => !s.available) && (
                                         <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 sm:mx-5">
@@ -769,34 +972,6 @@ export default function BookingCalendar({
                                                                             Not available
                                                                         </span>
                                                                     </div>
-                                                                </div>
-                                                            </div>
-                                                        </li>
-                                                    );
-                                                }
-                                                if (readOnly) {
-                                                    return (
-                                                        <li key={rowKey} className="list-none">
-                                                            <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
-                                                                <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-white py-3 pr-2 pl-1 text-right">
-                                                                    <span className="text-xs font-bold tabular-nums text-xu-primary">{gutter.start}</span>
-                                                                    <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
-                                                                </div>
-                                                                <div className="p-2 sm:p-2.5">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setLoginRequiredNudge('Log in first to reserve a slot.')}
-                                                                        aria-label={`Available ${label} — log in to reserve`}
-                                                                        className="group flex h-full min-h-[3rem] w-full items-center justify-between gap-2 rounded-lg border-2 border-emerald-200/90 bg-emerald-50/50 px-3 py-2 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xu-secondary"
-                                                                    >
-                                                                        <div className="min-w-0 text-left">
-                                                                            <p className="text-sm font-semibold text-emerald-900">{label}</p>
-                                                                            <p className="text-xs text-emerald-800/90">Available · log in to reserve</p>
-                                                                        </div>
-                                                                        <span className="shrink-0 rounded-md bg-emerald-600/10 px-2 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">
-                                                                            Log in
-                                                                        </span>
-                                                                    </button>
                                                                 </div>
                                                             </div>
                                                         </li>

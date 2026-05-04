@@ -7,7 +7,7 @@ import {
     bookingKindFromSpace,
     buildStartEndPayloadFromWallClock,
     initialWallClockFieldsFromReservation,
-    validateHalfHourTimesForKind,
+    validateWallClockWindowForKind,
     wallClockFieldsFromInstants,
 } from '../utils/reservationBookingTimes';
 import { BOOKING_TIMEZONE } from '../utils/timeDisplay';
@@ -95,10 +95,11 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
             return;
         }
 
-        const timeErr = validateHalfHourTimesForKind(wc.kind, wc);
+        const timeErr = validateWallClockWindowForKind(wc.kind, wc);
         if (timeErr) {
+            const halfMsg = 'Times must use half-hour boundaries only (:00 or :30).';
             setError(
-                wc.kind === 'half_hour_details'
+                timeErr === halfMsg && wc.kind === 'half_hour_details'
                     ? 'For this space, times must be on the half-hour (:00 or :30).'
                     : timeErr,
             );

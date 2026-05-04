@@ -98,7 +98,14 @@ class HalfHourSpacesReservationTest extends TestCase
         $user = $this->makeStudent();
         Sanctum::actingAs($user);
 
-        $lecture = $this->makeSpace('lecture', 'lecture', 'Lecture Space');
+        $lecture = Space::create([
+            'name' => 'Lecture Space',
+            'slug' => 'lecture-'.uniqid(),
+            'type' => 'lecture',
+            'capacity' => 30,
+            'is_active' => true,
+            'is_confab_pool' => false,
+        ]);
 
         $bad = $this->postJson('/api/reservations', [
             'space_id' => $lecture->id,

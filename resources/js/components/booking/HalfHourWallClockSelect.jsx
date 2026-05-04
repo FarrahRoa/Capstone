@@ -1,5 +1,7 @@
 import { ui } from '../../theme';
 import {
+    formatReservationHourOption12h,
+    formatReservationMinuteOptionLabel,
     joinHalfHourWallClockHhmm,
     RESERVATION_TIME_HOUR_CHOICES,
     RESERVATION_TIME_MINUTE_CHOICES,
@@ -51,7 +53,7 @@ export default function HalfHourWallClockSelect({
                 >
                     {RESERVATION_TIME_HOUR_CHOICES.map((hh) => (
                         <option key={hh} value={hh}>
-                            {hh}
+                            {formatReservationHourOption12h(hh)}
                         </option>
                     ))}
                 </select>
@@ -64,7 +66,7 @@ export default function HalfHourWallClockSelect({
                 >
                     {RESERVATION_TIME_MINUTE_CHOICES.map((mm) => (
                         <option key={mm} value={mm}>
-                            {mm}
+                            {formatReservationMinuteOptionLabel(mm)}
                         </option>
                     ))}
                 </select>
@@ -85,7 +87,7 @@ export default function HalfHourWallClockSelect({
                 >
                     {RESERVATION_TIME_HOUR_CHOICES.map((hh) => (
                         <option key={hh} value={hh}>
-                            {hh}
+                            {formatReservationHourOption12h(hh)}
                         </option>
                     ))}
                 </select>
@@ -104,7 +106,7 @@ export default function HalfHourWallClockSelect({
                 >
                     {RESERVATION_TIME_MINUTE_CHOICES.map((mm) => (
                         <option key={mm} value={mm}>
-                            {mm}
+                            {formatReservationMinuteOptionLabel(mm)}
                         </option>
                     ))}
                 </select>
