@@ -122,6 +122,9 @@ export default function ReservationForm() {
         startTime,
         endTime,
     ]);
+
+    useEffect(() => {
+        api.get('/spaces').then(({ data }) => {
             const list = unwrapData(data);
             const raw = Array.isArray(list) ? list : [];
             setShowcaseSpaces(raw);
