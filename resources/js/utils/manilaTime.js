@@ -316,8 +316,8 @@ export function buildPublicAggregatedHalfHourSlots(dateYmd, scheduleRows, daySta
                 }
                 if (hit) {
                     const label =
-                        (row.space.schedule_label && String(row.space.schedule_label).trim()) ||
                         (row.space.name && String(row.space.name).trim()) ||
+                        (row.space.schedule_label && String(row.space.schedule_label).trim()) ||
                         `Space ${sid}`;
                     busySpaces.push({ id: sid, label });
                 }
@@ -328,8 +328,8 @@ export function buildPublicAggregatedHalfHourSlots(dateYmd, scheduleRows, daySta
                 const sid = row.space.id;
                 if (busyId.has(String(sid))) continue;
                 const label =
-                    (row.space.schedule_label && String(row.space.schedule_label).trim()) ||
                     (row.space.name && String(row.space.name).trim()) ||
+                    (row.space.schedule_label && String(row.space.schedule_label).trim()) ||
                     `Space ${sid}`;
                 freeSpaces.push({ id: sid, label });
             }

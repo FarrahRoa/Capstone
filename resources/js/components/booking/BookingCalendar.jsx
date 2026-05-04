@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../../api';
 import { useAuth } from '../../contexts/AuthContext';
 import { isAdminScheduleViewer } from '../../utils/isAdminScheduleViewer';
-import { userFacingSpaceName, scheduleBoardLabelFromSpace } from '../../utils/userFacingSpaceName';
+import { userFacingSpaceName, dedupeConfabFamilyForLegend } from '../../utils/userFacingSpaceName';
 import { getSpaceIneligibilityMessage, getSpaceRestrictionLabel, isUserEligibleForSpace } from '../../utils/spaceEligibility';
 import {
     buildManilaHalfHourSlots,
@@ -34,6 +34,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function abbreviateSpaceName(name) {
     if (!name || typeof name !== 'string') return '?';
     const t = name.trim();
+    if (t === 'Confab' || t === 'Medical Confab') return t;
     const medical = t.match(/^Medical\s+Confab\s+(\d+)/i);
     if (medical) return `M${medical[1]}`;
     const confab = t.match(/^Confab\s+(\d+)/i);
@@ -42,23 +43,43 @@ function abbreviateSpaceName(name) {
     return `${t.slice(0, 5)}…`;
 }
 
+function overviewRowDedupeKey(space, adminSchedule, readOnly) {
+    if (!space) return '';
+    if (adminSchedule && !readOnly) return String(space.id);
+    if (space.type === 'confab' && !space.is_confab_pool) return '__mask_confab__';
+    if (space.type === 'medical_confab') return '__mask_medical_confab__';
+    return String(space.id);
+}
+
 /**
  * @param {Array<string|number>} spaceIds
- * @param {Array<{ id: number|string, name: string }>} spaces
+ * @param {Array<{ id: number|string, name: string, record_name?: string, type?: string, is_confab_pool?: boolean }>} spaces
  */
-function overviewSpaceRows(spaceIds, spaces, readOnly = false) {
+function overviewSpaceRows(spaceIds, spaces, readOnly = false, adminSchedule = false) {
     if (!Array.isArray(spaceIds) || spaceIds.length === 0) return [];
     const out = [];
     const seen = new Set();
-    const labelFn = readOnly ? scheduleBoardLabelFromSpace : userFacingSpaceName;
     for (const id of spaceIds) {
         const s = spaces.find((x) => String(x.id) === String(id));
-        const row = s ? { ...s, name: labelFn(s) } : { id, name: `Space ${id}` };
-        if (seen.has(String(row.id))) continue;
-        seen.add(String(row.id));
+        const name = s
+            ? adminSchedule && !readOnly
+                ? (s.record_name != null && String(s.record_name).trim()) || s.name || ''
+                : userFacingSpaceName(s)
+            : `Space ${id}`;
+        const row = s ? { ...s, name } : { id, name };
+        const dedupeKey = s ? overviewRowDedupeKey(s, adminSchedule, readOnly) : `missing-${id}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
         out.push(row);
     }
     return out;
+}
+
+function legendPillLabel(space, adminSchedule, readOnly) {
+    if (adminSchedule && !readOnly) {
+        return (space?.record_name != null && String(space.record_name).trim()) || space?.name || '';
+    }
+    return userFacingSpaceName(space);
 }
 
 function initialManilaCalendarState() {
@@ -90,6 +111,12 @@ export default function BookingCalendar({
         () => spaces.filter((s) => !s?.is_confab_pool),
         [spaces]
     );
+
+    /** Legend: one generic Confab / Medical Confab pill for masked viewers; admins keep one pill per physical room. */
+    const legendSourceSpaces = useMemo(() => {
+        if (adminSchedule) return timelineSpaces;
+        return dedupeConfabFamilyForLegend(timelineSpaces);
+    }, [adminSchedule, timelineSpaces]);
 
     const [cal, setCal] = useState(initialManilaCalendarState);
     const { selectedYmd, viewYear, viewMonth } = cal;
@@ -279,10 +306,9 @@ export default function BookingCalendar({
         [readOnly, selectedYmd, publicScheduleRows]
     );
     const spacesWithColors = useMemo(() => {
-        const src = readOnly ? timelineSpaces : bookableSpaces;
-        const pickColor = readOnly ? colorForOperationalSpaceId : colorForSpaceId;
-        return src.map((s) => ({ ...s, __color: pickColor(s.id, spaces) }));
-    }, [readOnly, timelineSpaces, bookableSpaces, spaces]);
+        const pickColor = adminSchedule && !readOnly ? colorForOperationalSpaceId : colorForSpaceId;
+        return legendSourceSpaces.map((s) => ({ ...s, __color: pickColor(s.id, spaces) }));
+    }, [legendSourceSpaces, adminSchedule, readOnly, spaces]);
 
     const goPrevMonth = useCallback(() => {
         setCal((c) => {
@@ -442,11 +468,11 @@ export default function BookingCalendar({
                                     <span
                                         key={s.id}
                                         className={`inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 shadow-sm ring-1 ${s.__color.ring}`}
-                                        title={readOnly ? scheduleBoardLabelFromSpace(s) : userFacingSpaceName(s)}
+                                        title={legendPillLabel(s, adminSchedule, readOnly)}
                                     >
                                         <span className={`h-2.5 w-2.5 rounded-full ${s.__color.bg}`} aria-hidden="true" />
                                         <span className="max-w-[14rem] truncate sm:max-w-none">
-                                            {readOnly ? scheduleBoardLabelFromSpace(s) : userFacingSpaceName(s)}
+                                            {legendPillLabel(s, adminSchedule, readOnly)}
                                         </span>
                                     </span>
                                 ))}
@@ -472,7 +498,7 @@ export default function BookingCalendar({
                             const isPast = isPastDay(ymd);
                             const full = isFullyBooked(ymd);
                             const stripIds = Array.isArray(overviewByDate?.[ymd]) ? overviewByDate[ymd] : [];
-                            const stripRows = overviewSpaceRows(stripIds, spaces, readOnly);
+                            const stripRows = overviewSpaceRows(stripIds, spaces, readOnly, adminSchedule);
                             const stripOverviewTip =
                                 stripRows.length > 0
                                     ? `Spaces with reservations: ${stripRows.map((s) => s.name).join(', ')}`
@@ -592,7 +618,7 @@ export default function BookingCalendar({
                                         const isPast = isPastDay(cell.ymd);
                                         const full = isFullyBooked(cell.ymd);
                                         const spaceIds = Array.isArray(overviewByDate?.[cell.ymd]) ? overviewByDate[cell.ymd] : [];
-                                        const overviewRows = overviewSpaceRows(spaceIds, spaces, readOnly);
+                                        const overviewRows = overviewSpaceRows(spaceIds, spaces, readOnly, adminSchedule);
                                         const overviewNameList = overviewRows.map((s) => s.name).join(', ');
                                         const overviewTooltip =
                                             overviewRows.length > 0
@@ -676,9 +702,10 @@ export default function BookingCalendar({
                                                         {showNamedOverview && (
                                                             <span className="flex max-w-full flex-wrap items-center justify-center gap-1">
                                                                 {namedPreview.map((s) => {
-                                                                    const c = readOnly
-                                                                        ? colorForOperationalSpaceId(s.id, spaces)
-                                                                        : colorForSpaceId(s.id, spaces);
+                                                                    const c =
+                                                                        adminSchedule && !readOnly
+                                                                            ? colorForOperationalSpaceId(s.id, spaces)
+                                                                            : colorForSpaceId(s.id, spaces);
                                                                     return (
                                                                         <span
                                                                             key={s.id}

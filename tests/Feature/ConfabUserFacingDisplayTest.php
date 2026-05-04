@@ -100,10 +100,10 @@ class ConfabUserFacingDisplayTest extends TestCase
         $row = collect($payload['spaces'])->first(fn ($r) => (int) ($r['space']['id'] ?? 0) === $room->id);
         $this->assertNotNull($row);
         $this->assertSame('Confab', $row['space']['name']);
-        $this->assertSame('Space 7', $row['space']['schedule_label']);
+        $this->assertSame('Confab', $row['space']['schedule_label']);
     }
 
-    public function test_user_reservation_show_masks_assignable_confab_name(): void
+    public function test_user_reservation_show_includes_assigned_confab_room_name(): void
     {
         $studentRole = Role::firstOrCreate(['slug' => 'student'], ['name' => 'Student', 'description' => 't']);
         $user = User::factory()->create(['role_id' => $studentRole->id, 'is_activated' => true]);
@@ -130,7 +130,7 @@ class ConfabUserFacingDisplayTest extends TestCase
 
         $this->getJson('/api/reservations/'.$reservation->id)
             ->assertOk()
-            ->assertJsonPath('data.space.name', 'Confab');
+            ->assertJsonPath('data.space.name', 'Confab 4');
 
         $room->refresh();
         $this->assertSame('Confab 4', $room->name);

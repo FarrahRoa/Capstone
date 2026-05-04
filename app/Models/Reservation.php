@@ -293,7 +293,8 @@ class Reservation extends Model
     }
 
     /**
-     * API shape for students/faculty: nested space uses {@see Space::userFacingName()}.
+     * API shape for the reservation owner: nested space shows the real assigned room name (e.g. "Confab 3")
+     * so My Reservations stays specific, while public calendar APIs continue to use {@see Space::userFacingName()}.
      *
      * @return array<string, mixed>
      */
@@ -305,7 +306,7 @@ class Reservation extends Model
 
         if ($this->space !== null) {
             $data['space'] = array_merge($this->space->toArray(), [
-                'name' => $this->space->userFacingName(),
+                'name' => (string) $this->space->name,
             ]);
         }
 

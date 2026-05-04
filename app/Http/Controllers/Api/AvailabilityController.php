@@ -128,7 +128,8 @@ class AvailabilityController extends Controller
                 'space' => [
                     'id' => $space->id,
                     'name' => $space->userFacingName(),
-                    'schedule_label' => $space->scheduleOperationalDisplayName(),
+                    /** Same masking as {@see userFacingName()} — never leak numbered Confab/Med Confab names on the public board. */
+                    'schedule_label' => $space->userFacingName(),
                     'type' => $space->type,
                     'slug' => $space->slug,
                     'is_confab_pool' => (bool) $space->is_confab_pool,

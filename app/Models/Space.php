@@ -52,6 +52,10 @@ class Space extends Model
      */
     public function userFacingName(): string
     {
+        if ($this->type === self::TYPE_MEDICAL_CONFAB) {
+            return 'Medical Confab';
+        }
+
         if ($this->type === self::TYPE_CONFAB) {
             return 'Confab';
         }
@@ -69,6 +73,10 @@ class Space extends Model
             return $this->isConfabAssignmentPool()
                 ? 'Confab (pool — pending assignment)'
                 : (string) $this->name;
+        }
+
+        if ($this->type === self::TYPE_MEDICAL_CONFAB) {
+            return (string) $this->name;
         }
 
         return $this->userFacingName();
