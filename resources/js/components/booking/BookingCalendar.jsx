@@ -43,11 +43,61 @@ function abbreviateSpaceName(name) {
     return `${t.slice(0, 5)}…`;
 }
 
+function extractFloorFromGuidelineDetails(space) {
+    const d = space?.guideline_details && typeof space.guideline_details === 'object' ? space.guideline_details : {};
+    const raw = d.location != null ? String(d.location).trim() : '';
+    if (!raw) return '';
+    const m = raw.match(/\b(ground|[0-9]+(?:st|nd|rd|th)?)\s*floor\b/i);
+    if (m) {
+        const w = String(m[1] || '').trim();
+        if (!w) return '';
+        const normalized = /^\d+$/.test(w) ? `${w}th` : w;
+        return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1).toLowerCase()} Floor`;
+    }
+    const any = raw.match(/\b[^.]{0,40}\bfloor\b[^.]{0,40}\b/i);
+    return any ? String(any[0]).trim() : '';
+}
+
+function reservationForSlot(slot, reservedSlots) {
+    const list = Array.isArray(reservedSlots) ? reservedSlots : [];
+    const slotStart = new Date(slot.start_at).getTime();
+    const slotEnd = new Date(slot.end_at).getTime();
+    for (const r of list) {
+        const rs = new Date(r.start_at).getTime();
+        const re = new Date(r.end_at).getTime();
+        if (slotStart < re && slotEnd > rs) {
+            return r;
+        }
+    }
+    return null;
+}
+
+function manilaTimeRangeLabel(startIso, endIso) {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: BOOKING_TIMEZONE,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
+    return `${fmt.format(new Date(startIso))} - ${fmt.format(new Date(endIso))}`;
+}
+
+function holidayForYmd(holidays, ymd) {
+    if (!ymd || !Array.isArray(holidays)) return null;
+    const md = String(ymd).slice(5);
+    return (
+        holidays.find((h) => {
+            const d = String(h?.date || '');
+            if (!d) return false;
+            const recurring = Boolean(h?.is_recurring);
+            return recurring ? d.slice(5) === md : d === ymd;
+        }) || null
+    );
+}
+
 function overviewRowDedupeKey(space, adminSchedule, readOnly) {
     if (!space) return '';
     if (adminSchedule && !readOnly) return String(space.id);
-    if (space.type === 'confab' && !space.is_confab_pool) return '__mask_confab__';
-    if (space.type === 'medical_confab') return '__mask_medical_confab__';
     return String(space.id);
 }
 
@@ -112,7 +162,7 @@ export default function BookingCalendar({
         [spaces]
     );
 
-    /** Legend: one generic Confab / Medical Confab pill for masked viewers; admins keep one pill per physical room. */
+    /** Legend: show one pill per space (including Confab 1..N). */
     const legendSourceSpaces = useMemo(() => {
         if (adminSchedule) return timelineSpaces;
         return dedupeConfabFamilyForLegend(timelineSpaces);
@@ -168,6 +218,8 @@ export default function BookingCalendar({
     const [summaryLoading, setSummaryLoading] = useState(false);
     const [overviewByDate, setOverviewByDate] = useState({});
     const [overviewLoading, setOverviewLoading] = useState(false);
+    const [confabRoomsDayRows, setConfabRoomsDayRows] = useState([]);
+    const [holidays, setHolidays] = useState([]);
 
     useEffect(() => {
         if (!cellYmdBounds.min || !cellYmdBounds.max) {
@@ -198,6 +250,15 @@ export default function BookingCalendar({
             cancelled = true;
         };
     }, [cellYmdBounds.min, cellYmdBounds.max, readOnly]);
+
+    useEffect(() => {
+        api.get('/policies/operating-hours')
+            .then(({ data }) => {
+                const payload = unwrapData(data);
+                setHolidays(Array.isArray(payload?.holidays) ? payload.holidays : []);
+            })
+            .catch(() => setHolidays([]));
+    }, []);
 
     useEffect(() => {
         if (readOnly) {
@@ -293,11 +354,76 @@ export default function BookingCalendar({
     const selectedSpace = bookableSpaces.find((s) => String(s.id) === String(selectedSpaceId));
     const eligible = readOnly ? true : (selectedSpace ? isUserEligibleForSpace(user, selectedSpace) : false);
     const restrictionLabel = selectedSpace ? getSpaceRestrictionLabel(selectedSpace) : '';
+    const selectedIsConfabPool = Boolean(selectedSpace?.type === 'confab' && selectedSpace?.is_confab_pool);
 
     const slots = useMemo(
         () => buildManilaHalfHourSlots(selectedYmd, reservedSlots, DAY_START_HOUR, DAY_END_HOUR),
         [selectedYmd, reservedSlots]
     );
+
+    useEffect(() => {
+        if (readOnly) {
+            setConfabRoomsDayRows([]);
+            return;
+        }
+        if (!selectedIsConfabPool || !selectedYmd) {
+            setConfabRoomsDayRows([]);
+            return;
+        }
+        let cancelled = false;
+        api.get('/availability', { params: { date: selectedYmd } })
+            .then(({ data }) => {
+                if (cancelled) return;
+                const rows = unwrapData(data);
+                setConfabRoomsDayRows(Array.isArray(rows) ? rows : []);
+            })
+            .catch(() => {
+                if (!cancelled) setConfabRoomsDayRows([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedIsConfabPool, selectedYmd, readOnly]);
+
+    const reservationsForDetailPanel = useMemo(() => {
+        /** @type {{ id: number|string, start_at: string, end_at: string, title?: string|null, description?: string|null, user?: {id:number|string,name:string}|null, space_name?: string }[]} */
+        const out = [];
+
+        if (!selectedYmd) return out;
+
+        if (selectedIsConfabPool) {
+            const rows = Array.isArray(confabRoomsDayRows) ? confabRoomsDayRows : [];
+            rows.forEach((row) => {
+                const space = row?.space;
+                if (!space || space.is_confab_pool || space.type !== 'confab') return;
+                const list = Array.isArray(row.reserved_slots) ? row.reserved_slots : [];
+                list.forEach((r) => {
+                    if (!r) return;
+                    out.push({
+                        ...r,
+                        space_name: space.name || '',
+                    });
+                });
+            });
+        } else {
+            const list = Array.isArray(reservedSlots) ? reservedSlots : [];
+            list.forEach((r) => {
+                if (!r) return;
+                out.push({ ...r, space_name: selectedSpace?.name || '' });
+            });
+        }
+
+        out.sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+
+        // Dedupe defensive: if any duplicates slip in, keep first by id+window.
+        const seen = new Set();
+        return out.filter((r) => {
+            const key = `${r.id}-${r.start_at}-${r.end_at}-${r.space_name || ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }, [selectedYmd, selectedIsConfabPool, confabRoomsDayRows, reservedSlots, selectedSpace?.name]);
     const aggregatedSlots = useMemo(
         () =>
             readOnly
@@ -330,6 +456,7 @@ export default function BookingCalendar({
 
     const onPickDate = (cell) => {
         if (isPastDay(cell.ymd)) return;
+        if (holidayForYmd(holidays, cell.ymd)) return;
         if (isFullyBooked(cell.ymd)) return;
         const [y, m] = cell.ymd.split('-').map(Number);
         setCal({ selectedYmd: cell.ymd, viewYear: y, viewMonth: m - 1 });
@@ -337,6 +464,7 @@ export default function BookingCalendar({
 
     const onPickWeekDay = (ymd) => {
         if (isPastDay(ymd)) return;
+        if (holidayForYmd(holidays, ymd)) return;
         if (isFullyBooked(ymd)) return;
         const [y, m] = ymd.split('-').map(Number);
         setCal({ selectedYmd: ymd, viewYear: y, viewMonth: m - 1 });
@@ -364,7 +492,7 @@ export default function BookingCalendar({
         <div id={embedded ? 'book-a-space' : undefined} className={shellClass}>
             <div
                 className={
-                    readOnly && embedded ? 'mx-auto w-full min-w-0 max-w-none' : 'mx-auto min-w-0 max-w-6xl'
+                    readOnly && embedded ? 'mx-auto w-full min-w-0 max-w-none' : 'mx-auto min-w-0 max-w-7xl'
                 }
             >
                 {spacesLoadError && (
@@ -582,7 +710,7 @@ export default function BookingCalendar({
                 </div>
 
                 <div className="bg-white">
-                    <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,min(100%,34rem))_minmax(0,1fr)] lg:divide-x lg:divide-slate-200/80">
+                    <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,min(100%,26rem))_minmax(0,1fr)] lg:gap-6">
                         <div className="min-w-0 border-b border-slate-200/80 p-4 sm:p-5 lg:border-b-0 lg:pr-6">
                             <div className="rounded-xl border border-slate-200/90 bg-slate-50/70 p-4 shadow-inner sm:p-5">
                                 <div className="mb-4 flex items-center justify-between gap-2">
@@ -616,6 +744,7 @@ export default function BookingCalendar({
                                         const isSelected = cell.ymd === selectedYmd;
                                         const isTodayCell = cell.ymd === todayYmd;
                                         const isPast = isPastDay(cell.ymd);
+                                        const holiday = holidayForYmd(holidays, cell.ymd);
                                         const full = isFullyBooked(cell.ymd);
                                         const spaceIds = Array.isArray(overviewByDate?.[cell.ymd]) ? overviewByDate[cell.ymd] : [];
                                         const overviewRows = overviewSpaceRows(spaceIds, spaces, readOnly, adminSchedule);
@@ -637,7 +766,7 @@ export default function BookingCalendar({
                                                                 : 'Past date is not reservable'
                                                         }
                                                         className={[
-                                                            'flex h-[3.25rem] w-[2.875rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-slate-200/80 bg-slate-100/70 text-sm font-semibold tabular-nums leading-none text-slate-500 sm:h-[3.6rem] sm:w-[3.25rem]',
+                                                            'flex h-[3.1rem] w-[2.6rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-slate-200/80 bg-slate-100/70 text-sm font-semibold tabular-nums leading-none text-slate-500 sm:h-[3.4rem] sm:w-[3rem]',
                                                             !cell.inMonth && 'opacity-40',
                                                             isSelected &&
                                                                 'border-xu-primary bg-xu-primary/15 text-xu-primary shadow-inner ring-[3px] ring-xu-gold/55 ring-offset-2 ring-offset-slate-50',
@@ -649,6 +778,27 @@ export default function BookingCalendar({
                                                     >
                                                         <span>{cell.dayNum}</span>
                                                     </div>
+                                                ) : holiday ? (
+                                                    <div
+                                                        title={`Holiday: ${holiday.name}`}
+                                                        className={[
+                                                            'flex h-[3.1rem] w-[2.6rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-rose-200/80 bg-rose-50 text-sm font-semibold tabular-nums leading-none text-rose-700 sm:h-[3.4rem] sm:w-[3rem]',
+                                                            !cell.inMonth && 'opacity-40',
+                                                            isSelected &&
+                                                                'border-rose-400 bg-rose-100 text-rose-800 shadow-inner ring-[3px] ring-rose-200/70 ring-offset-2 ring-offset-slate-50',
+                                                            isTodayCell && !isSelected && cell.inMonth && 'ring-2 ring-rose-200/70',
+                                                        ]
+                                                            .filter(Boolean)
+                                                            .join(' ')}
+                                                        aria-label={`${cell.dayNum} holiday`}
+                                                    >
+                                                        <span>{cell.dayNum}</span>
+                                                        {cell.inMonth && (
+                                                            <span className="mt-1 text-[10px] font-bold uppercase tracking-wide text-rose-700">
+                                                                Holiday
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 ) : full ? (
                                                     <div
                                                         title={
@@ -657,7 +807,7 @@ export default function BookingCalendar({
                                                                 : 'No open slots for this room on this day'
                                                         }
                                                         className={[
-                                                            'flex h-[3.25rem] w-[2.875rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-dashed border-slate-300/80 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,rgba(148,163,184,0.12)_4px,rgba(148,163,184,0.12)_5px)] text-sm font-semibold tabular-nums leading-none text-slate-500 sm:h-[3.6rem] sm:w-[3.25rem]',
+                                                            'flex h-[3.1rem] w-[2.6rem] cursor-not-allowed flex-col items-center justify-center rounded-xl border border-dashed border-slate-300/80 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,rgba(148,163,184,0.12)_4px,rgba(148,163,184,0.12)_5px)] text-sm font-semibold tabular-nums leading-none text-slate-500 sm:h-[3.4rem] sm:w-[3rem]',
                                                             !cell.inMonth && 'opacity-40',
                                                             isSelected &&
                                                                 'border-xu-primary bg-xu-primary/15 text-xu-primary ring-[3px] ring-xu-gold/55 ring-offset-2 ring-offset-slate-50',
@@ -685,7 +835,7 @@ export default function BookingCalendar({
                                                                 : `${cell.dayNum}`
                                                         }
                                                         className={[
-                                                            'relative flex w-[2.875rem] flex-col items-center justify-between rounded-xl px-1 pb-1.5 pt-1 text-base font-semibold tabular-nums transition sm:w-[3.25rem]',
+                                                            'relative flex w-[2.6rem] flex-col items-center justify-between rounded-xl px-1 pb-1.5 pt-1 text-base font-semibold tabular-nums transition sm:w-[3rem]',
                                                             showNamedOverview ? 'min-h-[3.85rem] sm:min-h-[4.1rem]' : 'min-h-[3.25rem] sm:min-h-[3.6rem]',
                                                             !cell.inMonth && 'text-slate-300',
                                                             cell.inMonth &&
@@ -968,72 +1118,133 @@ export default function BookingCalendar({
                                         role="region"
                                         aria-label={`Schedule for ${selectedSpace ? userFacingSpaceName(selectedSpace) : 'room'} on ${selectedYmd}`}
                                     >
-                                        <ul className="m-0 min-w-0 list-none divide-y divide-slate-100 p-0">
-                                            {slots.map((slot) => {
-                                                const label = formatManilaHalfHourSlotLabel(slot.hourStart, slot.minuteStart, slot.hourEnd, slot.minuteEnd);
-                                                const reserveUrl = `/reserve?space_id=${selectedSpaceId}&date=${selectedYmd}&start_time=${manilaTimeParamFromHour(slot.hourStart, slot.minuteStart)}&end_time=${manilaTimeParamFromHour(slot.hourEnd, slot.minuteEnd)}`;
-                                                const rowKey = `${selectedSpaceId}-${selectedYmd}-${slot.hourStart}-${slot.minuteStart}`;
-                                                const gutter = formatManilaSlotGutterTimes(slot);
-                                                if (!slot.available) {
+                                        <div className="grid grid-cols-1 gap-6 p-3 sm:p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                                            <ul className="m-0 min-w-0 list-none space-y-2 rounded-xl border border-slate-200/80 bg-white p-2 shadow-sm">
+                                                {slots.map((slot) => {
+                                                    const label = formatManilaHalfHourSlotLabel(
+                                                        slot.hourStart,
+                                                        slot.minuteStart,
+                                                        slot.hourEnd,
+                                                        slot.minuteEnd
+                                                    );
+                                                    const reserveUrl = `/reserve?space_id=${selectedSpaceId}&date=${selectedYmd}&start_time=${manilaTimeParamFromHour(
+                                                        slot.hourStart,
+                                                        slot.minuteStart
+                                                    )}&end_time=${manilaTimeParamFromHour(slot.hourEnd, slot.minuteEnd)}`;
+                                                    const rowKey = `${selectedSpaceId}-${selectedYmd}-${slot.hourStart}-${slot.minuteStart}`;
+                                                    const gutter = formatManilaSlotGutterTimes(slot);
+                                                    const r = slot.available ? null : reservationForSlot(slot, reservedSlots);
+
+                                                    if (!slot.available) {
+                                                        return (
+                                                            <li key={rowKey} className="list-none">
+                                                                <div className="grid w-full grid-cols-[4.25rem_1fr] gap-0 text-left sm:grid-cols-[5rem_1fr]">
+                                                                    <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-slate-50 py-4 pr-2.5 pl-1.5 text-right">
+                                                                        <span className="text-xs font-bold tabular-nums text-slate-500">{gutter.start}</span>
+                                                                        <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
+                                                                    </div>
+                                                                    <div className="p-3 sm:p-3.5">
+                                                                        <div className="flex min-h-[3.5rem] items-center justify-between gap-3 rounded-xl border border-slate-300/90 bg-slate-100/90 px-4 py-3 shadow-inner">
+                                                                            <div className="min-w-0">
+                                                                                <p className="text-sm font-semibold text-slate-700">{label}</p>
+                                                                                <p className="text-xs font-medium text-slate-600">
+                                                                                    {r?.title ? 'Occupied' : 'Occupied'}
+                                                                                </p>
+                                                                            </div>
+                                                                            <span className="shrink-0 rounded-md border border-slate-400/50 bg-slate-200/80 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                                                                                Occupied
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </li>
+                                                        );
+                                                    }
+
                                                     return (
                                                         <li key={rowKey} className="list-none">
                                                             <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
-                                                                <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-slate-50 py-3 pr-2 pl-1 text-right">
-                                                                    <span className="text-xs font-bold tabular-nums text-slate-500">
-                                                                        {gutter.start}
-                                                                    </span>
+                                                                <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-white py-4 pr-2.5 pl-1.5 text-right">
+                                                                    <span className="text-xs font-bold tabular-nums text-xu-primary">{gutter.start}</span>
                                                                     <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
                                                                 </div>
-                                                                <div className="p-2 sm:p-2.5">
-                                                                    <div
-                                                                        aria-label={`${label} — reserved`}
-                                                                        className="flex h-full min-h-[3rem] items-center justify-between gap-2 rounded-lg border border-slate-300/90 bg-[repeating-linear-gradient(135deg,transparent,transparent_6px,rgba(148,163,184,0.12)_6px,rgba(148,163,184,0.12)_7px)] bg-slate-100/90 px-3 py-2 shadow-inner"
+                                                                <div className="p-3 sm:p-3.5">
+                                                                    <Link
+                                                                        to={reserveUrl}
+                                                                        aria-label={`Book ${label} in ${selectedSpace ? userFacingSpaceName(selectedSpace) : 'this room'}`}
+                                                                        className="group flex h-full min-h-[3.5rem] items-center justify-between gap-3 rounded-xl border-2 border-slate-200/90 bg-white px-4 py-3 shadow-sm transition hover:border-xu-secondary hover:bg-xu-page/50 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xu-secondary"
                                                                     >
-                                                                        <div className="min-w-0">
-                                                                            <p className="text-sm font-semibold text-slate-600">{label}</p>
-                                                                            <p className="text-xs text-slate-500">
-                                                                                {selectedSpace ? userFacingSpaceName(selectedSpace) : ''} · not available
+                                                                        <div className="min-w-0 text-left">
+                                                                            <p className="text-sm font-semibold text-slate-900 group-hover:text-xu-primary">
+                                                                                {label}
                                                                             </p>
+                                                                            <p className="text-xs text-xu-secondary/90">Click to reserve this slot</p>
                                                                         </div>
-                                                                        <span className="shrink-0 rounded-md border border-slate-400/50 bg-slate-200/80 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">
-                                                                            Not available
+                                                                        <span className="shrink-0 rounded-md bg-xu-primary/10 px-2 py-1 text-xs font-bold uppercase tracking-wide text-xu-primary group-hover:bg-xu-primary group-hover:text-white">
+                                                                            Book
                                                                         </span>
-                                                                    </div>
+                                                                    </Link>
                                                                 </div>
                                                             </div>
                                                         </li>
                                                     );
-                                                }
+                                                })}
+                                            </ul>
 
-                                                return (
-                                                    <li key={rowKey} className="list-none">
-                                                        <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
-                                                            <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-white py-3 pr-2 pl-1 text-right">
-                                                                <span className="text-xs font-bold tabular-nums text-xu-primary">{gutter.start}</span>
-                                                                <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
-                                                            </div>
-                                                            <div className="p-2 sm:p-2.5">
-                                                                <Link
-                                                                    to={reserveUrl}
-                                                                    aria-label={`Book ${label} in ${selectedSpace ? userFacingSpaceName(selectedSpace) : 'this room'}`}
-                                                                    className="group flex h-full min-h-[3rem] items-center justify-between gap-2 rounded-lg border-2 border-slate-200/90 bg-white px-3 py-2 shadow-sm transition hover:border-xu-secondary hover:bg-xu-page/50 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xu-secondary"
-                                                                >
-                                                                    <div className="min-w-0 text-left">
-                                                                        <p className="text-sm font-semibold text-slate-900 group-hover:text-xu-primary">
-                                                                            {label}
+                                            <aside className="min-w-0 lg:min-w-[22rem]">
+                                                <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+                                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                        Reservation Details
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        {selectedSpace ? userFacingSpaceName(selectedSpace) : 'Space'} · {manilaSelectedDayTitle(selectedYmd)}
+                                                    </p>
+
+                                                    {reservationsForDetailPanel.length === 0 ? (
+                                                        <p className="mt-3 text-sm text-slate-600">
+                                                            No reservations for this date.
+                                                        </p>
+                                                    ) : (
+                                                        <div className="mt-3 max-h-[18rem] space-y-2 overflow-y-auto pr-1 [scrollbar-width:thin]">
+                                                            {reservationsForDetailPanel.map((r) => {
+                                                                const title = r.title || 'Reserved';
+                                                                const desc = (r.description || '').trim();
+                                                                const who = r.user?.name ? String(r.user.name).trim() : '';
+                                                                const roomName = r.space_name ? String(r.space_name).trim() : '';
+                                                                return (
+                                                                    <div
+                                                                        key={`${r.id}-${r.start_at}-${r.end_at}-${roomName}`}
+                                                                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                                                                    >
+                                                                        <p className="text-xs font-semibold text-xu-primary">
+                                                                            {manilaTimeRangeLabel(r.start_at, r.end_at)}
                                                                         </p>
-                                                                        <p className="text-xs text-xu-secondary/90">Click to reserve this slot</p>
+                                                                        <p className="mt-0.5 text-sm font-semibold text-slate-900">
+                                                                            {title}
+                                                                        </p>
+                                                                        {(selectedIsConfabPool && roomName) && (
+                                                                            <p className="text-xs text-slate-600">
+                                                                                <span className="font-medium text-slate-700">Room:</span> {roomName}
+                                                                            </p>
+                                                                        )}
+                                                                        {desc && (
+                                                                            <p className="mt-1 text-xs text-slate-700 whitespace-pre-wrap">
+                                                                                {desc}
+                                                                            </p>
+                                                                        )}
+                                                                        {who && (
+                                                                            <p className="mt-1 text-xs text-slate-600">
+                                                                                <span className="font-medium text-slate-700">Reserved by:</span> {who}
+                                                                            </p>
+                                                                        )}
                                                                     </div>
-                                                                    <span className="shrink-0 rounded-md bg-xu-primary/10 px-2 py-1 text-xs font-bold uppercase tracking-wide text-xu-primary group-hover:bg-xu-primary group-hover:text-white">
-                                                                        Book
-                                                                    </span>
-                                                                </Link>
-                                                            </div>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    </li>
-                                                );
-                                            })}
-                                        </ul>
+                                                    )}
+                                                </div>
+                                            </aside>
+                                        </div>
                                     </div>
                                 </div>
                             )}

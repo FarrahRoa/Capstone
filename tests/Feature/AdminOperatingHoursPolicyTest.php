@@ -34,7 +34,7 @@ class AdminOperatingHoursPolicyTest extends TestCase
         $get = $this->getJson('/api/admin/policies/operating-hours');
         $get->assertOk();
         $get->assertJsonPath('data.slug', PolicyDocument::SLUG_OPERATING_HOURS);
-        $get->assertJsonStructure(['data' => ['hours' => ['day_start', 'day_end']]]);
+        $get->assertJsonStructure(['data' => ['hours' => ['day_start', 'day_end', 'weekend_day_start', 'weekend_day_end']]]);
 
         $put = $this->putJson('/api/admin/policies/operating-hours', [
             'day_start' => '08:00',

@@ -10,7 +10,8 @@
     <p>Hello {{ $reservation->user->name }},</p>
     <p>Your reservation has been approved.</p>
     <p><strong>Reservation number:</strong> {{ $reservation->reservation_number }}</p>
-    <p><strong>Space:</strong> {{ $reservation->space->userFacingName() }}</p>
+    <p><strong>Assigned Space:</strong> {{ $assignedSpaceName ?? ($reservation->space->name ?? $reservation->space->userFacingName()) }}</p>
+    <p><strong>Location/Floor:</strong> {{ $locationFloor ?? '—' }}</p>
     <p><strong>Date & time:</strong> {{ \App\Support\ReservationDisplayFormat::dateAndTimes($reservation->start_at, $reservation->end_at) }}</p>
     <p>Please present this reservation number when you use the space.</p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">

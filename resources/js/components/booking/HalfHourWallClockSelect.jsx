@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from 'react';
 import { ui } from '../../theme';
 import {
     formatReservationHourOption12h,
@@ -7,6 +8,7 @@ import {
     RESERVATION_TIME_MINUTE_CHOICES,
     splitHalfHourWallClockHhmm,
 } from '../../utils/halfHourWallClockInput';
+import { allowedHalfHourChoiceMap, coerceHalfHourToAllowed } from '../../utils/operatingHours';
 
 /**
  * Reservation wall-clock control: hour (24h) + minute, minutes limited to :00 / :30.
@@ -24,8 +26,34 @@ export default function HalfHourWallClockSelect({
     hourLabel = 'Hour',
     minuteLabel = 'Minute',
     visibleFieldLabels = false,
+    /** When set, only these HH:mm half-hour times are selectable (e.g. within operating hours). */
+    allowedHhmmList = null,
 }) {
+    const choiceMap = useMemo(() => allowedHalfHourChoiceMap(allowedHhmmList), [allowedHhmmList]);
+
+    const allowedKey = allowedHhmmList?.length ? allowedHhmmList.join('|') : '';
+
+    useEffect(() => {
+        if (!allowedHhmmList || allowedHhmmList.length === 0) return;
+        const next = coerceHalfHourToAllowed(value, allowedHhmmList);
+        if (next !== value) onChange(next);
+    }, [allowedKey, value, onChange, allowedHhmmList]);
+
+    const hourChoices = useMemo(() => {
+        if (!choiceMap) return RESERVATION_TIME_HOUR_CHOICES;
+        return RESERVATION_TIME_HOUR_CHOICES.filter((hh) => choiceMap.has(hh));
+    }, [choiceMap]);
+
     const { hour, minute } = splitHalfHourWallClockHhmm(value);
+    const minuteChoices = useMemo(() => {
+        if (!choiceMap) return RESERVATION_TIME_MINUTE_CHOICES;
+        const set = choiceMap.get(hour);
+        if (!set) return RESERVATION_TIME_MINUTE_CHOICES;
+        return RESERVATION_TIME_MINUTE_CHOICES.filter((mm) => set.has(mm));
+    }, [choiceMap, hour]);
+
+    const safeMinute = minuteChoices.includes(minute) ? minute : minuteChoices[0] ?? '00';
+
     const idH = idPrefix ? `${idPrefix}-hour` : undefined;
     const idM = idPrefix ? `${idPrefix}-minute` : undefined;
 
@@ -49,9 +77,9 @@ export default function HalfHourWallClockSelect({
                     disabled={disabled}
                     className={`min-w-0 w-full ${ui.select}`}
                     value={hour}
-                    onChange={(e) => onChange(joinHalfHourWallClockHhmm(e.target.value, minute))}
+                    onChange={(e) => onChange(joinHalfHourWallClockHhmm(e.target.value, safeMinute))}
                 >
-                    {RESERVATION_TIME_HOUR_CHOICES.map((hh) => (
+                    {hourChoices.map((hh) => (
                         <option key={hh} value={hh}>
                             {formatReservationHourOption12h(hh)}
                         </option>
@@ -61,10 +89,10 @@ export default function HalfHourWallClockSelect({
                     id={idM}
                     disabled={disabled}
                     className={`min-w-0 w-full ${ui.select}`}
-                    value={minute}
+                    value={safeMinute}
                     onChange={(e) => onChange(joinHalfHourWallClockHhmm(hour, e.target.value))}
                 >
-                    {RESERVATION_TIME_MINUTE_CHOICES.map((mm) => (
+                    {minuteChoices.map((mm) => (
                         <option key={mm} value={mm}>
                             {formatReservationMinuteOptionLabel(mm)}
                         </option>
@@ -83,9 +111,9 @@ export default function HalfHourWallClockSelect({
                     disabled={disabled}
                     className={`w-full ${ui.select}`}
                     value={hour}
-                    onChange={(e) => onChange(joinHalfHourWallClockHhmm(e.target.value, minute))}
+                    onChange={(e) => onChange(joinHalfHourWallClockHhmm(e.target.value, safeMinute))}
                 >
-                    {RESERVATION_TIME_HOUR_CHOICES.map((hh) => (
+                    {hourChoices.map((hh) => (
                         <option key={hh} value={hh}>
                             {formatReservationHourOption12h(hh)}
                         </option>
@@ -101,10 +129,10 @@ export default function HalfHourWallClockSelect({
                     id={idM}
                     disabled={disabled}
                     className={`w-full ${ui.select}`}
-                    value={minute}
+                    value={safeMinute}
                     onChange={(e) => onChange(joinHalfHourWallClockHhmm(hour, e.target.value))}
                 >
-                    {RESERVATION_TIME_MINUTE_CHOICES.map((mm) => (
+                    {minuteChoices.map((mm) => (
                         <option key={mm} value={mm}>
                             {formatReservationMinuteOptionLabel(mm)}
                         </option>

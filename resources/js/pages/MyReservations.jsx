@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../api';
 import { paginatorRows, unwrapData } from '../utils/apiEnvelope';
 import { getEventRequestTypeLabel, getReservationActionLabel, getReservationStatusLabel } from '../utils/reservationVocabulary';
@@ -10,9 +10,33 @@ import {
     validateWallClockWindowForKind,
     wallClockFieldsFromInstants,
 } from '../utils/reservationBookingTimes';
+import {
+    allowedEndHhmmList,
+    allowedEndHhmmListAvrRange,
+    allowedStartHhmmList,
+    allowedStartHhmmListBeforeEnd,
+    normalizeOperatingHoursPayload,
+    operatingHoursWallClockError,
+    resolveOperatingWindowForYmd,
+} from '../utils/operatingHours';
 import { BOOKING_TIMEZONE } from '../utils/timeDisplay';
 import { ui } from '../theme';
 import HalfHourWallClockSelect from '../components/booking/HalfHourWallClockSelect';
+
+function extractFloorFromGuidelineDetails(space) {
+    const d = space?.guideline_details && typeof space.guideline_details === 'object' ? space.guideline_details : {};
+    const raw = d.location != null ? String(d.location).trim() : '';
+    if (!raw) return '';
+    const m = raw.match(/\b(ground|[0-9]+(?:st|nd|rd|th)?)\s*floor\b/i);
+    if (m) {
+        const w = String(m[1] || '').trim();
+        if (!w) return '';
+        const normalized = /^\d+$/.test(w) ? `${w}th` : w;
+        return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1).toLowerCase()} Floor`;
+    }
+    const any = raw.match(/\b[^.]{0,40}\bfloor\b[^.]{0,40}\b/i);
+    return any ? String(any[0]).trim() : '';
+}
 
 function canEditReservation(r) {
     if (!r) return false;
@@ -38,7 +62,18 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
     const [eventRequestType, setEventRequestType] = useState('');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [operatingHoursConfig, setOperatingHoursConfig] = useState(() => normalizeOperatingHoursPayload(null));
     const prevSpaceIdRef = useRef('');
+
+    useEffect(() => {
+        if (!open) return;
+        api.get('/policies/operating-hours')
+            .then(({ data }) => {
+                const payload = unwrapData(data);
+                setOperatingHoursConfig(normalizeOperatingHoursPayload(payload?.hours));
+            })
+            .catch(() => setOperatingHoursConfig(normalizeOperatingHoursPayload(null)));
+    }, [open]);
 
     useEffect(() => {
         if (!open) return;
@@ -83,6 +118,69 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
     const selectedSpace = spaces.find((s) => String(s.id) === String(spaceId));
     const needsEventAudience = Boolean(selectedSpace && (selectedSpace.type === 'avr' || selectedSpace.type === 'lobby'));
 
+    const standardDayWindow = useMemo(
+        () => resolveOperatingWindowForYmd(operatingHoursConfig, wc.date || ''),
+        [operatingHoursConfig, wc.date],
+    );
+    const standardStartAllowed = useMemo(
+        () => allowedStartHhmmList(standardDayWindow.start, standardDayWindow.end),
+        [standardDayWindow],
+    );
+    const standardEndAllowed = useMemo(
+        () => allowedEndHhmmList(standardDayWindow.start, standardDayWindow.end, wc.startTime || '09:00'),
+        [standardDayWindow, wc.startTime],
+    );
+
+    const detailDayWindow = useMemo(
+        () => resolveOperatingWindowForYmd(operatingHoursConfig, wc.date || ''),
+        [operatingHoursConfig, wc.date],
+    );
+    const detailStartAllowed = useMemo(
+        () => allowedStartHhmmListBeforeEnd(detailDayWindow.start, detailDayWindow.end, wc.rangeEndTime || '10:00'),
+        [detailDayWindow, wc.rangeEndTime],
+    );
+    const detailEndAllowed = useMemo(
+        () => allowedEndHhmmList(detailDayWindow.start, detailDayWindow.end, wc.rangeStartTime || '09:00'),
+        [detailDayWindow, wc.rangeStartTime],
+    );
+
+    const avrStartWindow = useMemo(
+        () => resolveOperatingWindowForYmd(operatingHoursConfig, wc.rangeStartDate || ''),
+        [operatingHoursConfig, wc.rangeStartDate],
+    );
+    const avrEndWindow = useMemo(
+        () => resolveOperatingWindowForYmd(operatingHoursConfig, wc.rangeEndDate || ''),
+        [operatingHoursConfig, wc.rangeEndDate],
+    );
+    const avrStartAllowed = useMemo(() => {
+        if (!wc.rangeStartDate || !wc.rangeEndDate) return allowedStartHhmmList(avrStartWindow.start, avrStartWindow.end);
+        if (wc.rangeStartDate === wc.rangeEndDate) {
+            return allowedStartHhmmListBeforeEnd(avrStartWindow.start, avrStartWindow.end, wc.rangeEndTime || '10:00');
+        }
+        return allowedStartHhmmList(avrStartWindow.start, avrStartWindow.end);
+    }, [wc.rangeStartDate, wc.rangeEndDate, wc.rangeEndTime, avrStartWindow]);
+    const avrEndAllowed = useMemo(() => {
+        if (!wc.rangeStartDate || !wc.rangeEndDate) {
+            return allowedEndHhmmList(avrEndWindow.start, avrEndWindow.end, wc.rangeStartTime || '09:00');
+        }
+        if (wc.rangeStartDate === wc.rangeEndDate) {
+            return allowedEndHhmmList(avrStartWindow.start, avrStartWindow.end, wc.rangeStartTime || '09:00');
+        }
+        return allowedEndHhmmListAvrRange(
+            wc.rangeStartDate,
+            wc.rangeStartTime || '09:00',
+            wc.rangeEndDate,
+            avrEndWindow,
+            buildStartEndPayloadFromWallClock,
+        );
+    }, [wc.rangeStartDate, wc.rangeEndDate, wc.rangeStartTime, avrStartWindow, avrEndWindow]);
+
+    const operatingHoursError = useMemo(() => {
+        const basic = validateWallClockWindowForKind(wc.kind, wc);
+        if (basic) return '';
+        return operatingHoursWallClockError(wc.kind, wc, operatingHoursConfig, buildStartEndPayloadFromWallClock);
+    }, [wc, operatingHoursConfig]);
+
     const onSave = async () => {
         if (!reservation) return;
         setError('');
@@ -103,6 +201,11 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                     ? 'For this space, times must be on the half-hour (:00 or :30).'
                     : timeErr,
             );
+            return;
+        }
+
+        if (operatingHoursError) {
+            setError(operatingHoursError);
             return;
         }
 
@@ -151,6 +254,20 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                 {selectedSpace?.name || reservation?.space?.name || 'Reservation'}
                             </p>
                             <p className="text-sm text-slate-600">Philippines civil time ({BOOKING_TIMEZONE} / PHT)</p>
+                    {wc.kind === 'avr_range' && wc.rangeStartDate && wc.rangeEndDate && (
+                        <p className="mt-1 text-xs text-slate-600">
+                            Hours: {resolveOperatingWindowForYmd(operatingHoursConfig, wc.rangeStartDate).start}–
+                            {resolveOperatingWindowForYmd(operatingHoursConfig, wc.rangeStartDate).end} (start date) ·{' '}
+                            {resolveOperatingWindowForYmd(operatingHoursConfig, wc.rangeEndDate).start}–
+                            {resolveOperatingWindowForYmd(operatingHoursConfig, wc.rangeEndDate).end} (end date) PHT
+                        </p>
+                    )}
+                    {wc.kind !== 'avr_range' && wc.date && (
+                        <p className="mt-1 text-xs text-slate-600">
+                            Hours this day: {resolveOperatingWindowForYmd(operatingHoursConfig, wc.date).start}–
+                            {resolveOperatingWindowForYmd(operatingHoursConfig, wc.date).end} PHT
+                        </p>
+                    )}
                         </div>
                         <button
                             type="button"
@@ -216,6 +333,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                         idPrefix="edit-range-start"
                                         value={wc.rangeStartTime}
                                         onChange={(v) => setWc((p) => ({ ...p, rangeStartTime: v }))}
+                                        allowedHhmmList={avrStartAllowed}
                                     />
                                 </div>
                                 <div>
@@ -234,6 +352,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-range-end"
                                     value={wc.rangeEndTime}
                                     onChange={(v) => setWc((p) => ({ ...p, rangeEndTime: v }))}
+                                    allowedHhmmList={avrEndAllowed}
                                 />
                             </div>
                         </>
@@ -245,6 +364,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-details-start"
                                     value={wc.rangeStartTime}
                                     onChange={(v) => setWc((p) => ({ ...p, rangeStartTime: v }))}
+                                    allowedHhmmList={detailStartAllowed}
                                 />
                             </div>
                             <div>
@@ -253,6 +373,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-details-end"
                                     value={wc.rangeEndTime}
                                     onChange={(v) => setWc((p) => ({ ...p, rangeEndTime: v }))}
+                                    allowedHhmmList={detailEndAllowed}
                                 />
                             </div>
                         </div>
@@ -264,6 +385,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-standard-start"
                                     value={wc.startTime}
                                     onChange={(v) => setWc((p) => ({ ...p, startTime: v }))}
+                                    allowedHhmmList={standardStartAllowed}
                                 />
                             </div>
                             <div>
@@ -272,6 +394,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-standard-end"
                                     value={wc.endTime}
                                     onChange={(v) => setWc((p) => ({ ...p, endTime: v }))}
+                                    allowedHhmmList={standardEndAllowed}
                                 />
                             </div>
                         </div>
@@ -285,7 +408,7 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                     <button
                         type="button"
                         onClick={onSave}
-                        disabled={saving}
+                        disabled={saving || Boolean(operatingHoursError)}
                         className={ui.btnPrimaryFull}
                     >
                         {saving ? 'Saving…' : 'Save changes'}
@@ -348,7 +471,15 @@ export default function MyReservations() {
                             className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between ${ui.cardFlat}`}
                         >
                             <div className="min-w-0 flex-1">
-                                <p className="font-medium text-xu-primary">{r.space?.name ?? '—'}</p>
+                                <p className="font-medium text-xu-primary">
+                                    {r.space?.name ?? '—'}
+                                    {extractFloorFromGuidelineDetails(r.space) ? (
+                                        <span className="text-slate-600 font-normal">
+                                            {' '}
+                                            · {extractFloorFromGuidelineDetails(r.space)}
+                                        </span>
+                                    ) : null}
+                                </p>
                                 <p className="text-sm text-slate-600">
                                     {formatDisplayDate(r.start_at)}
                                     {formatDisplayDate(r.start_at) !== formatDisplayDate(r.end_at)
@@ -358,7 +489,33 @@ export default function MyReservations() {
                                 <p className="text-sm text-slate-600">
                                     {formatDisplayTime(r.start_at)} – {formatDisplayTime(r.end_at)}
                                 </p>
-                                <p className="text-sm text-slate-500">{getReservationStatusLabel(r.status)}{r.reservation_number ? ` • ${r.reservation_number}` : ''}</p>
+                                <div className="mt-2 grid grid-cols-1 gap-1.5 text-sm text-slate-700 sm:grid-cols-2">
+                                    <p className="text-slate-500">
+                                        <span className="font-medium text-slate-700">Status:</span>{' '}
+                                        {getReservationStatusLabel(r.status)}
+                                        {r.reservation_number ? ` • ${r.reservation_number}` : ''}
+                                    </p>
+                                    {r.participant_count != null && String(r.participant_count).trim() !== '' && (
+                                        <p className="text-slate-500">
+                                            <span className="font-medium text-slate-700">Attendees:</span>{' '}
+                                            {r.participant_count}
+                                        </p>
+                                    )}
+                                    {(r.event_title || '').trim() !== '' && (
+                                        <p className="sm:col-span-2">
+                                            <span className="font-medium text-slate-700">Title:</span>{' '}
+                                            {r.event_title}
+                                        </p>
+                                    )}
+                                    {((r.event_description || r.purpose || '').trim() !== '') && (
+                                        <p className="sm:col-span-2">
+                                            <span className="font-medium text-slate-700">Description:</span>{' '}
+                                            <span className="whitespace-pre-wrap">
+                                                {(r.event_description || r.purpose || '').trim()}
+                                            </span>
+                                        </p>
+                                    )}
+                                </div>
                                 {r.event_request_type ? (
                                     <p className="text-sm text-slate-600 mt-0.5">
                                         <span className="font-medium text-slate-700">Event audience:</span>{' '}

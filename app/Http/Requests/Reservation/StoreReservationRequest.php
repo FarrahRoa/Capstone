@@ -4,6 +4,9 @@ namespace App\Http\Requests\Reservation;
 
 use App\Models\Reservation;
 use App\Models\Space;
+use App\Models\User;
+use App\Models\Holiday;
+use App\Models\PolicyDocument;
 use App\Support\ReservationDeanRouting;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -99,6 +102,12 @@ class StoreReservationRequest extends FormRequest
                 return;
             }
 
+            $holiday = Holiday::matchForDate($start, $tz);
+            if ($holiday !== null) {
+                $validator->errors()->add('start_at', 'Cannot reserve on a holiday.');
+                return;
+            }
+
             if ((int) $start->second !== 0 || (int) $end->second !== 0) {
                 $validator->errors()->add('slot', 'Seconds must be :00.');
 
@@ -114,6 +123,24 @@ class StoreReservationRequest extends FormRequest
             if (! in_array((int) $end->minute, self::ALLOWED_MINUTES, true)) {
                 $validator->errors()->add('end_at', 'End time minutes must be :00 or :30.');
 
+                return;
+            }
+
+            if (PolicyDocument::reservationOutsideOperatingHours($start, $end, $tz)) {
+                $validator->errors()->add('start_at', 'The selected time is outside the library\'s operating hours.');
+
+                return;
+            }
+
+            $userType = $this->user()->user_type ?? User::getUserTypeFromEmail((string) $this->user()->email);
+            $maxMinutes = $userType === User::USER_TYPE_STUDENT ? 120 : 180;
+            $maxHours = $maxMinutes / 60;
+            $durationMinutes = $start->diffInMinutes($end);
+            if ($durationMinutes > $maxMinutes) {
+                $validator->errors()->add(
+                    'end_at',
+                    "You have exceeded your maximum booking limit of {$maxHours} hours for your account type."
+                );
                 return;
             }
 
@@ -138,7 +165,10 @@ class StoreReservationRequest extends FormRequest
                 if ($capRaw !== null && (int) $capRaw > 0) {
                     $pcVal = (int) $this->input('participant_count', 0);
                     if ($pcVal > (int) $capRaw) {
-                        $validator->errors()->add('participant_count', 'Over the seating capacity.');
+                        $validator->errors()->add(
+                            'participant_count',
+                            'The number of attendees exceeds the seating capacity for this space (Max: ' . (int) $capRaw . ' seats).'
+                        );
 
                         return;
                     }

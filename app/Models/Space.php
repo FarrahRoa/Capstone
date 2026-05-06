@@ -47,16 +47,14 @@ class Space extends Model
     }
 
     /**
-     * End-user label for students/faculty (pool + assignable confab rooms read as "Confab").
-     * Admin APIs continue to use the stored {@see $name} for specific room identity.
+     * End-user label for students/faculty.
+     *
+     * Confab assignment pool stays generic ("Confab") so users book the pool,
+     * but physical/assigned rooms (e.g. "Confab 1") must remain specific.
      */
     public function userFacingName(): string
     {
-        if ($this->type === self::TYPE_MEDICAL_CONFAB) {
-            return 'Medical Confab';
-        }
-
-        if ($this->type === self::TYPE_CONFAB) {
+        if ($this->type === self::TYPE_CONFAB && $this->isConfabAssignmentPool()) {
             return 'Confab';
         }
 

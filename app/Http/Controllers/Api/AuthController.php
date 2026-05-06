@@ -321,22 +321,59 @@ class AuthController extends Controller
         $unit = trim((string) $request->input('college_office'));
         $mobile = trim((string) $request->input('mobile_number'));
 
-        $allowed = $userType === User::USER_TYPE_STUDENT
-            ? User::allowedStudentColleges()
-            : User::allowedFacultyOffices();
+        // New (preferred): store normalized IDs; keep legacy college_office for display/back-compat.
+        $collegeId = $request->input('college_id');
+        $officeId = $request->input('office_id');
 
-        if (!in_array($unit, $allowed, true)) {
-            return response()->json([
-                'message' => 'Invalid college/office selection.',
-                'errors' => [
-                    'college_office' => ['Selected value is not allowed for this account type.'],
-                ],
-            ], 422);
+        if ($userType === User::USER_TYPE_STUDENT) {
+            if ($collegeId !== null && $collegeId !== '') {
+                $collegeRow = \App\Models\College::query()->whereKey((int) $collegeId)->first();
+                if (! $collegeRow) {
+                    return response()->json([
+                        'message' => 'Invalid college selection.',
+                        'errors' => ['college_id' => ['Select a valid college.']],
+                    ], 422);
+                }
+                $unit = $collegeRow->name;
+            } else {
+                $allowed = User::allowedStudentColleges();
+                if (!in_array($unit, $allowed, true)) {
+                    return response()->json([
+                        'message' => 'Invalid college selection.',
+                        'errors' => ['college_office' => ['Selected value is not allowed for this account type.']],
+                    ], 422);
+                }
+            }
+        } else {
+            if ($officeId !== null && $officeId !== '') {
+                $officeRow = \App\Models\Office::query()->whereKey((int) $officeId)->first();
+                if (! $officeRow) {
+                    return response()->json([
+                        'message' => 'Invalid office selection.',
+                        'errors' => ['office_id' => ['Select a valid office/department.']],
+                    ], 422);
+                }
+                $unit = $officeRow->name;
+            } else {
+                $allowed = User::allowedFacultyOffices();
+                if (!in_array($unit, $allowed, true)) {
+                    return response()->json([
+                        'message' => 'Invalid office selection.',
+                        'errors' => ['college_office' => ['Selected value is not allowed for this account type.']],
+                    ], 422);
+                }
+            }
         }
 
         $user->update([
             'name' => $name,
             'college_office' => $unit,
+            'college_id' => $userType === User::USER_TYPE_STUDENT
+                ? (\App\Models\College::query()->where('name', $unit)->value('id') ?: null)
+                : null,
+            'office_id' => $userType === User::USER_TYPE_STUDENT
+                ? null
+                : (\App\Models\Office::query()->where('name', $unit)->value('id') ?: null),
             'mobile_number' => $mobile,
             'user_type' => $userType,
             'profile_completed_at' => now(),

@@ -36,6 +36,38 @@ class ReservationController extends Controller
         return ApiResponse::data(['count' => $count]);
     }
 
+    /**
+     * Reservations belonging to the authenticated user that overlap a Manila civil date.
+     * Used by the booking grid to show "My reservation" blocks without exposing other users' details.
+     */
+    public function myDay(Request $request): JsonResponse
+    {
+        $request->validate([
+            'date' => 'required|date',
+            'space_id' => 'nullable|exists:spaces,id',
+        ]);
+
+        $tz = (string) config('app.timezone');
+        $dayStart = Carbon::parse($request->input('date'), $tz)->startOfDay();
+        $dayEnd = $dayStart->copy()->endOfDay()->addSecond();
+
+        $q = Reservation::query()
+            ->where('user_id', $request->user()->id)
+            ->whereIn('status', Reservation::blockingStatuses())
+            ->where('start_at', '<', $dayEnd)
+            ->where('end_at', '>', $dayStart)
+            ->with(['space', 'approver', 'logs.actor'])
+            ->orderBy('start_at');
+
+        if ($request->filled('space_id')) {
+            $q->where('space_id', (int) $request->input('space_id'));
+        }
+
+        $rows = $q->get()->map(fn (Reservation $r) => $r->toArrayForUserApi())->values()->all();
+
+        return ApiResponse::data($rows);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = $request->user()->reservations()->with(['space', 'approver', 'logs.actor'])->latest();

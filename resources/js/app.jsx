@@ -21,6 +21,7 @@ const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminSpaces = lazy(() => import('./pages/admin/AdminSpaces'));
 const AdminPolicies = lazy(() => import('./pages/admin/AdminPolicies'));
 const AdminDeanEmails = lazy(() => import('./pages/admin/AdminDeanEmails'));
+const CollegeOfficeManager = lazy(() => import('./pages/admin/CollegeOfficeManager'));
 const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours'));
 const AdminCloudSync = lazy(() => import('./pages/admin/AdminCloudSync'));
 const Unauthorized = lazy(() => import('./pages/Unauthorized'));
@@ -172,6 +173,14 @@ function AppRoutes() {
                     element={
                         <PrivateRoute requiredPermission="policies.manage">
                             {withLayout(<AdminDeanEmails />)}
+                        </PrivateRoute>
+                    }
+                />
+                <Route
+                    path="/admin/organizations"
+                    element={
+                        <PrivateRoute requiredPermission="users.manage">
+                            {withLayout(<CollegeOfficeManager />)}
                         </PrivateRoute>
                     }
                 />

@@ -9,8 +9,7 @@ export const SPACE_TYPE_MEDICAL_CONFAB = 'medical_confab';
  */
 export function userFacingSpaceName(space) {
     if (!space) return '';
-    if (space.type === SPACE_TYPE_MEDICAL_CONFAB) return 'Medical Confab';
-    if (space.type === SPACE_TYPE_CONFAB) return 'Confab';
+    if (space.type === SPACE_TYPE_CONFAB && space.is_confab_pool) return 'Confab';
     return space.name || '';
 }
 
@@ -22,32 +21,11 @@ export function scheduleBoardLabelFromSpace(space) {
 }
 
 /**
- * One legend row per logical Confab/Med Confab family for masked calendars (admins pass through full list elsewhere).
+ * Legend rows for the schedule board.
  *
  * @param {Array<object>} spaces active spaces including physical Confab rows
  */
 export function dedupeConfabFamilyForLegend(spaces) {
     if (!Array.isArray(spaces)) return [];
-    let confabRow = null;
-    let medicalRow = null;
-    const out = [];
-    for (const s of spaces) {
-        if (!s || s.is_confab_pool) continue;
-        if (s.type === SPACE_TYPE_CONFAB) {
-            if (!confabRow) {
-                confabRow = s;
-                out.push(s);
-            }
-            continue;
-        }
-        if (s.type === SPACE_TYPE_MEDICAL_CONFAB) {
-            if (!medicalRow) {
-                medicalRow = s;
-                out.push(s);
-            }
-            continue;
-        }
-        out.push(s);
-    }
-    return out;
+    return spaces.filter((s) => s && !s.is_confab_pool);
 }

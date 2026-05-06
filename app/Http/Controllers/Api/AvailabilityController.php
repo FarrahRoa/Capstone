@@ -53,7 +53,8 @@ class AvailabilityController extends Controller
                     ->blocking()
                     ->overlapping($dayStart, $dayEnd)
                     ->orderBy('start_at')
-                    ->get(['id', 'start_at', 'end_at', 'status']);
+                    ->with(['user:id,name'])
+                    ->get(['id', 'user_id', 'start_at', 'end_at', 'status', 'event_title', 'event_description', 'purpose']);
 
             $displayName = $operational
                 ? $space->scheduleOperationalDisplayName()
@@ -68,6 +69,15 @@ class AvailabilityController extends Controller
                     'start_at' => $r->start_at->toIso8601String(),
                     'end_at' => $r->end_at->toIso8601String(),
                     'status' => $r->status,
+                    // Metadata for schedule rendering (frontend replaces BOOK button when reserved).
+                    'title' => $r->event_title,
+                    'description' => $r->event_description ?: $r->purpose,
+                    'user' => $r->user
+                        ? [
+                            'id' => $r->user->id,
+                            'name' => $r->user->name,
+                        ]
+                        : null,
                 ]),
             ];
         }

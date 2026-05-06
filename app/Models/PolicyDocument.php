@@ -59,13 +59,111 @@ class PolicyDocument extends Model
     }
 
     /**
-     * @return array{day_start: string, day_end: string}
+     * @return array{day_start: string, day_end: string, weekend_day_start: ?string, weekend_day_end: ?string}
      */
     public static function defaultOperatingHours(): array
     {
         return [
-            'day_start' => '09:00',
-            'day_end' => '18:00',
+            'day_start' => '06:00',
+            'day_end' => '18:30',
+            'weekend_day_start' => null,
+            'weekend_day_end' => null,
         ];
+    }
+
+    /**
+     * @return array{day_start: string, day_end: string, weekend_day_start: ?string, weekend_day_end: ?string}
+     */
+    public static function decodedOperatingHours(): array
+    {
+        $doc = self::operatingHours();
+        $hours = json_decode((string) $doc->content, true);
+        if (! is_array($hours)) {
+            $hours = self::defaultOperatingHours();
+        }
+        $def = self::defaultOperatingHours();
+
+        $ws = $hours['weekend_day_start'] ?? null;
+        $we = $hours['weekend_day_end'] ?? null;
+        $ws = is_string($ws) && $ws !== '' ? $ws : null;
+        $we = is_string($we) && $we !== '' ? $we : null;
+        if ($ws === null || $we === null) {
+            $ws = null;
+            $we = null;
+        }
+
+        return [
+            'day_start' => (string) ($hours['day_start'] ?? $def['day_start']),
+            'day_end' => (string) ($hours['day_end'] ?? $def['day_end']),
+            'weekend_day_start' => $ws,
+            'weekend_day_end' => $we,
+        ];
+    }
+
+    /**
+     * Open/close wall times (H:i) for this local calendar day in the app timezone.
+     *
+     * @return array{start: string, end: string}
+     */
+    public static function resolvedOperatingWindowForLocalDate(Carbon $localDateInTz): array
+    {
+        $hours = self::decodedOperatingHours();
+        if ($localDateInTz->isWeekend()
+            && $hours['weekend_day_start'] !== null
+            && $hours['weekend_day_end'] !== null) {
+            return [
+                'start' => $hours['weekend_day_start'],
+                'end' => $hours['weekend_day_end'],
+            ];
+        }
+
+        return [
+            'start' => $hours['day_start'],
+            'end' => $hours['day_end'],
+        ];
+    }
+
+    /**
+     * True if some portion of [start, end) falls outside daily open/close windows (per Manila/app tz calendar day).
+     */
+    public static function reservationOutsideOperatingHours(Carbon $start, Carbon $end, string $tz): bool
+    {
+        $start = $start->copy()->timezone($tz);
+        $end = $end->copy()->timezone($tz);
+        if ($end->lte($start)) {
+            return true;
+        }
+
+        $day = $start->copy()->startOfDay();
+        $lastDay = $end->copy()->startOfDay();
+
+        while ($day->lte($lastDay)) {
+            $win = self::resolvedOperatingWindowForLocalDate($day);
+            try {
+                $open = $day->copy()->setTimeFromTimeString($win['start']);
+                $close = $day->copy()->setTimeFromTimeString($win['end']);
+            } catch (\Throwable) {
+                return true;
+            }
+
+            if ($close->lte($open)) {
+                return true;
+            }
+
+            $dayStart = $day->copy()->startOfDay();
+            $nextMidnight = $day->copy()->addDay()->startOfDay();
+            $overlapStart = $start->copy()->max($dayStart);
+            $overlapEnd = $end->copy()->min($nextMidnight);
+
+            if ($overlapStart->lt($overlapEnd)) {
+                if ($overlapStart->lt($open) || $overlapEnd->gt($close)) {
+                    return true;
+                }
+            }
+
+            $day->addDay();
+        }
+
+        return false;
     }
 }

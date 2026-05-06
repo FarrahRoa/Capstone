@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class User extends Authenticatable
 {
@@ -22,6 +23,11 @@ class User extends Authenticatable
      */
     public static function allowedStudentColleges(): array
     {
+        // Source of truth: `colleges` table (falls back to legacy static list if empty).
+        $rows = College::query()->orderBy('name')->pluck('name')->all();
+        if ($rows !== []) {
+            return $rows;
+        }
         return [
             'College of Computer Studies',
             'College of Arts and Sciences',
@@ -40,6 +46,11 @@ class User extends Authenticatable
      */
     public static function allowedFacultyOffices(): array
     {
+        // Source of truth: `offices` table (falls back to legacy static list if empty).
+        $rows = Office::query()->orderBy('name')->pluck('name')->all();
+        if ($rows !== []) {
+            return $rows;
+        }
         return [
             'Office of the President',
             'Office of the Vice-President Higher Education',
@@ -92,6 +103,8 @@ class User extends Authenticatable
         'year_level',
         'med_confab_eligible',
         'boardroom_eligible',
+        'college_id',
+        'office_id',
         'is_activated',
         'otp',
         'otp_hash',
@@ -129,6 +142,16 @@ class User extends Authenticatable
     public function role(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function college(): BelongsTo
+    {
+        return $this->belongsTo(College::class);
+    }
+
+    public function office(): BelongsTo
+    {
+        return $this->belongsTo(Office::class);
     }
 
     public function reservations(): \Illuminate\Database\Eloquent\Relations\HasMany
@@ -194,7 +217,7 @@ class User extends Authenticatable
     {
         // Keep the API payload intentionally small: `toArray()` includes many columns the SPA never reads
         // and increases JSON encode/decode cost on the critical `/me` path.
-        $this->loadMissing('role');
+        $this->loadMissing('role', 'college', 'office');
 
         $userType = $this->user_type ?? static::getUserTypeFromEmail($this->email);
         $profileComplete = $this->isProfileComplete();
@@ -215,6 +238,10 @@ class User extends Authenticatable
             'permissions' => $this->getPermissions(),
             'user_type' => $userType,
             'college_office' => $this->college_office,
+            'college_id' => $this->college_id,
+            'office_id' => $this->office_id,
+            'college' => $this->college ? ['id' => $this->college->id, 'name' => $this->college->name] : null,
+            'office' => $this->office ? ['id' => $this->office->id, 'name' => $this->office->name] : null,
             'mobile_number' => $this->mobile_number,
             'is_activated' => (bool) $this->is_activated,
             'profile_completed_at' => $this->profile_completed_at,
@@ -252,16 +279,56 @@ class User extends Authenticatable
      */
     public function roomReservationBlockedMessage(Space $space): ?string
     {
-        if ($space->type === Space::TYPE_MEDICAL_CONFAB && !$this->med_confab_eligible) {
-            return 'Only eligible med users can reserve Med Confab.';
+        // Staff/admin accounts are not restricted by these user-facing rules.
+        if ($this->isAdmin()) {
+            return null;
         }
-        if ($space->type === Space::TYPE_BOARDROOM) {
+
+        $userType = $this->user_type ?? self::getUserTypeFromEmail((string) $this->email);
+        $spaceType = (string) ($space->type ?? '');
+
+        // Students: Confab only; Med Confab allowed for eligible medical students.
+        if ($userType === self::USER_TYPE_STUDENT) {
+            if ($spaceType === Space::TYPE_CONFAB) {
+                return null;
+            }
+            if ($spaceType === Space::TYPE_MEDICAL_CONFAB) {
+                return $this->med_confab_eligible
+                    ? null
+                    : 'Your account type or affiliation does not have permission to reserve this specific space.';
+            }
+
+            return 'Your account type or affiliation does not have permission to reserve this specific space.';
+        }
+
+        // Faculty/Employees: all spaces, but Boardroom restricted by office affiliation.
+        if ($spaceType === Space::TYPE_BOARDROOM) {
+            // Preferred: ID-based check (central `offices` table).
+            if ($this->office_id) {
+                $allowedOfficeIds = Office::query()
+                    ->whereIn('name', [
+                        'Office of the President',
+                        'Office of the Vice-President Higher Education',
+                        'Office of the Vice President for Higher Education (OVPHE)',
+                        'OVPHE',
+                    ])
+                    ->pluck('id')
+                    ->all();
+                if (in_array((int) $this->office_id, array_map('intval', $allowedOfficeIds), true)) {
+                    return null;
+                }
+
+                return 'Your account type or affiliation does not have permission to reserve this specific space.';
+            }
+
+            // Legacy fallback: string-based unit on older profiles.
             $office = trim((string) ($this->college_office ?? ''));
             if (!in_array($office, self::allowedBoardroomOffices(), true)) {
-                return 'Only authorized Office of the President and Office of the Vice-President Higher Education users can reserve Boardroom.';
+                return 'Your account type or affiliation does not have permission to reserve this specific space.';
             }
         }
 
+        // Medical Confab is allowed for staff/faculty as well.
         return null;
     }
 

@@ -7,32 +7,52 @@ export function getSpaceRestrictionLabel(space) {
         return 'Restricted: eligible med users only';
     }
     if (space.type === SPACE_TYPE_BOARDROOM) {
-        return 'Restricted: Office of the President & OVP Higher Education only';
+        return 'Restricted: Office of the President & OVPHE only';
     }
     return '';
 }
 
-export function getSpaceIneligibilityMessage(space) {
+function isStaffOrAdmin(user) {
+    const slug = String(user?.role?.slug || '').toLowerCase();
+    return slug === 'admin' || slug === 'librarian' || slug === 'student_assistant';
+}
+
+export function getSpaceIneligibilityMessage(space, user) {
     if (!space) return '';
-    if (space.type === SPACE_TYPE_MEDICAL_CONFAB) {
-        return 'Only eligible med users can reserve Med Confab.';
+    if (isStaffOrAdmin(user)) return '';
+
+    const userType = String(user?.user_type || '').toLowerCase();
+
+    if (userType === 'student') {
+        if (space.type === 'confab') return '';
+        if (space.type === SPACE_TYPE_MEDICAL_CONFAB) {
+            return user?.med_confab_eligible
+                ? ''
+                : 'Your account type or affiliation does not have permission to reserve this specific space.';
+        }
+        return 'Your account type or affiliation does not have permission to reserve this specific space.';
     }
+
     if (space.type === SPACE_TYPE_BOARDROOM) {
-        return 'Only authorized Office of the President and Office of the Vice-President Higher Education users can reserve Boardroom.';
+        const officeId = user?.office_id;
+        const officeName = String(user?.office?.name || user?.college_office || '').trim();
+        const okByName =
+            officeName === 'Office of the President' ||
+            officeName === 'Office of the Vice-President Higher Education' ||
+            officeName === 'Office of the Vice President for Higher Education (OVPHE)' ||
+            officeName === 'OVPHE';
+        // Prefer ID if present; otherwise name fallback.
+        if (officeId == null && okByName) return '';
+        if (officeId != null && okByName) return '';
+        return 'Boardroom is restricted to OP/OVPHE only.';
     }
+
     return '';
 }
 
 export function isUserEligibleForSpace(user, space) {
     if (!space) return true;
-    if (space.type === SPACE_TYPE_MEDICAL_CONFAB) {
-        return Boolean(user?.med_confab_eligible);
-    }
-    if (space.type === SPACE_TYPE_BOARDROOM) {
-        const office = String(user?.college_office || '').trim();
-        return office === 'Office of the President' || office === 'Office of the Vice-President Higher Education';
-    }
-    return true;
+    return getSpaceIneligibilityMessage(space, user) === '';
 }
 
 /** Matches {@link BookingCalendar} slot grid: all library spaces use :00 / :30 boundaries. */

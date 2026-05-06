@@ -36,6 +36,7 @@ export default function Layout({ children }) {
     const canManageSpaces = hasPermission('spaces.manage');
     const canManagePolicies = hasPermission('policies.manage');
     const canManageDeanEmails = canManagePolicies;
+    const canManageOrganizations = canManageUsers;
     const canManageOperatingHours = canManagePolicies;
     const canCloudSync = hasPermission('system.cloud_sync');
 
@@ -102,6 +103,7 @@ export default function Layout({ children }) {
         canManageSpaces ||
         canManageUsers ||
         canManagePolicies ||
+        canManageOrganizations ||
         canManageOperatingHours ||
         canManageDeanEmails ||
         canCloudSync;
@@ -156,6 +158,11 @@ export default function Layout({ children }) {
             {canManageDeanEmails && (
                 <NavLink to="/admin/dean-emails" className={itemClass} onClick={onNavigate}>
                     Dean Emails
+                </NavLink>
+            )}
+            {canManageOrganizations && (
+                <NavLink to="/admin/organizations" className={itemClass} onClick={onNavigate}>
+                    Colleges & Offices
                 </NavLink>
             )}
             {canCloudSync && (

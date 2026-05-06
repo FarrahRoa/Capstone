@@ -1,18 +1,22 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { unwrapData } from '../utils/apiEnvelope';
 import { ui } from '../theme';
-import { FACULTY_OFFICES, STUDENT_COLLEGES } from '../constants/affiliationOptions';
 
 export default function CompleteProfile() {
     const { user, refreshUser } = useAuth();
     const navigate = useNavigate();
     const [name, setName] = useState(user?.name || '');
     const [collegeOffice, setCollegeOffice] = useState(user?.college_office || '');
+    const [collegeId, setCollegeId] = useState(user?.college_id || '');
+    const [officeId, setOfficeId] = useState(user?.office_id || '');
     const [mobileNumber, setMobileNumber] = useState(user?.mobile_number || '');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [colleges, setColleges] = useState([]);
+    const [offices, setOffices] = useState([]);
 
     const typeLabel = user?.user_type === 'student'
         ? 'Student'
@@ -20,11 +24,24 @@ export default function CompleteProfile() {
             ? 'Employee/Staff'
             : 'User';
 
+    useEffect(() => {
+        api.get('/affiliations')
+            .then(({ data }) => {
+                const payload = unwrapData(data);
+                setColleges(Array.isArray(payload?.colleges) ? payload.colleges : []);
+                setOffices(Array.isArray(payload?.offices) ? payload.offices : []);
+            })
+            .catch(() => {
+                setColleges([]);
+                setOffices([]);
+            });
+    }, []);
+
     const options = useMemo(() => {
-        if (user?.user_type === 'student') return STUDENT_COLLEGES;
-        if (user?.user_type === 'faculty_staff') return FACULTY_OFFICES;
+        if (user?.user_type === 'student') return colleges;
+        if (user?.user_type === 'faculty_staff') return offices;
         return [];
-    }, [user?.user_type]);
+    }, [user?.user_type, colleges, offices]);
 
     const unitLabel = user?.user_type === 'student' ? 'College' : 'Department/Office';
 
@@ -36,6 +53,8 @@ export default function CompleteProfile() {
             await api.post('/me/profile', {
                 name,
                 college_office: collegeOffice,
+                college_id: user?.user_type === 'student' ? (collegeId || null) : null,
+                office_id: user?.user_type === 'faculty_staff' ? (officeId || null) : null,
                 mobile_number: mobileNumber,
             });
             await refreshUser();
@@ -44,6 +63,8 @@ export default function CompleteProfile() {
         } catch (err) {
             setError(
                 err.response?.data?.errors?.college_office?.[0]
+                || err.response?.data?.errors?.college_id?.[0]
+                || err.response?.data?.errors?.office_id?.[0]
                 || err.response?.data?.errors?.mobile_number?.[0]
                 || err.response?.data?.errors?.name?.[0]
                 || err.response?.data?.message
@@ -96,8 +117,19 @@ export default function CompleteProfile() {
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">{unitLabel}</label>
                         <select
-                            value={collegeOffice}
-                            onChange={(e) => setCollegeOffice(e.target.value)}
+                            value={user?.user_type === 'student' ? String(collegeId) : String(officeId)}
+                            onChange={(e) => {
+                                const v = e.target.value;
+                                if (user?.user_type === 'student') {
+                                    setCollegeId(v);
+                                    const row = colleges.find((c) => String(c.id) === String(v));
+                                    setCollegeOffice(row?.name || '');
+                                } else {
+                                    setOfficeId(v);
+                                    const row = offices.find((o) => String(o.id) === String(v));
+                                    setCollegeOffice(row?.name || '');
+                                }
+                            }}
                             required
                             className={ui.select}
                             disabled={options.length === 0}
@@ -106,7 +138,7 @@ export default function CompleteProfile() {
                                 Select one…
                             </option>
                             {options.map((opt) => (
-                                <option key={opt} value={opt}>{opt}</option>
+                                <option key={opt.id} value={opt.id}>{opt.name}</option>
                             ))}
                         </select>
                         {options.length === 0 && (

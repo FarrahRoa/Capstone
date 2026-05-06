@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Mail\Reservation\ReservationDeanReviewRequestMail;
 use App\Mail\Reservation\ReservationPendingApprovalAdminMail;
+use App\Models\Office;
 use App\Models\DeanEmailMapping;
 use App\Models\Reservation;
 use App\Models\Space;
@@ -27,27 +28,53 @@ final class ReservationDeanRouting
 
     public static function activeMappingForOrganizationAvrLobby(): ?DeanEmailMapping
     {
+        $office = Office::query()->where('name', self::ORGANIZATION_DEAN_AFFILIATION_NAME)->first();
+        if (! $office) {
+            // Legacy fallback: name-based mapping
+            return DeanEmailMapping::query()
+                ->where('is_active', true)
+                ->where('affiliation_type', DeanEmailMapping::TYPE_OFFICE_DEPARTMENT)
+                ->where('affiliation_name', self::ORGANIZATION_DEAN_AFFILIATION_NAME)
+                ->first();
+        }
+
         return DeanEmailMapping::query()
             ->where('is_active', true)
-            ->where('affiliation_type', DeanEmailMapping::TYPE_OFFICE_DEPARTMENT)
-            ->where('affiliation_name', self::ORGANIZATION_DEAN_AFFILIATION_NAME)
+            ->where('office_id', $office->id)
             ->first();
     }
 
     public static function activeMappingForUserAffiliation(User $user): ?DeanEmailMapping
     {
-        $unit = trim((string) ($user->college_office ?? ''));
-        if ($unit === '') {
-            return null;
-        }
         $userType = $user->user_type ?? User::getUserTypeFromEmail((string) $user->email);
-        $affiliationType = $userType === User::USER_TYPE_STUDENT
-            ? DeanEmailMapping::TYPE_COLLEGE
-            : DeanEmailMapping::TYPE_OFFICE_DEPARTMENT;
+        if ($userType === User::USER_TYPE_STUDENT) {
+            if ($user->college_id) {
+                return DeanEmailMapping::query()
+                    ->where('is_active', true)
+                    ->where('college_id', $user->college_id)
+                    ->first();
+            }
+            $unit = trim((string) ($user->college_office ?? ''));
+            if ($unit === '') return null;
+            return DeanEmailMapping::query()
+                ->where('is_active', true)
+                ->where('affiliation_type', DeanEmailMapping::TYPE_COLLEGE)
+                ->where('affiliation_name', $unit)
+                ->first();
+        }
 
+        if ($user->office_id) {
+            return DeanEmailMapping::query()
+                ->where('is_active', true)
+                ->where('office_id', $user->office_id)
+                ->first();
+        }
+
+        $unit = trim((string) ($user->college_office ?? ''));
+        if ($unit === '') return null;
         return DeanEmailMapping::query()
             ->where('is_active', true)
-            ->where('affiliation_type', $affiliationType)
+            ->where('affiliation_type', DeanEmailMapping::TYPE_OFFICE_DEPARTMENT)
             ->where('affiliation_name', $unit)
             ->first();
     }

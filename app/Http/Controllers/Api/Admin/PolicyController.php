@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Holiday;
 use App\Models\PolicyDocument;
 use App\Models\Space;
 use App\Support\ApiResponse;
@@ -119,17 +120,17 @@ class PolicyController extends Controller
     public function showOperatingHours(): JsonResponse
     {
         $doc = PolicyDocument::operatingHours();
-        $hours = json_decode((string) $doc->content, true);
-        if (!is_array($hours)) {
-            $hours = PolicyDocument::defaultOperatingHours();
-        }
+        $hours = PolicyDocument::decodedOperatingHours();
 
         return ApiResponse::data([
             'slug' => $doc->slug,
             'hours' => [
-                'day_start' => (string) ($hours['day_start'] ?? PolicyDocument::defaultOperatingHours()['day_start']),
-                'day_end' => (string) ($hours['day_end'] ?? PolicyDocument::defaultOperatingHours()['day_end']),
+                'day_start' => $hours['day_start'],
+                'day_end' => $hours['day_end'],
+                'weekend_day_start' => $hours['weekend_day_start'],
+                'weekend_day_end' => $hours['weekend_day_end'],
             ],
+            'holidays' => Holiday::query()->orderBy('date')->orderBy('name')->get(['id', 'name', 'date', 'is_recurring']),
             'updated_at' => $doc->updated_at?->toIso8601String(),
         ]);
     }
@@ -139,6 +140,8 @@ class PolicyController extends Controller
         $data = $request->validate([
             'day_start' => ['required', 'date_format:H:i'],
             'day_end' => ['required', 'date_format:H:i'],
+            'weekend_day_start' => ['nullable', 'date_format:H:i'],
+            'weekend_day_end' => ['nullable', 'date_format:H:i'],
         ]);
 
         if (strcmp($data['day_end'], $data['day_start']) <= 0) {
@@ -150,20 +153,48 @@ class PolicyController extends Controller
             ], 422);
         }
 
+        $ws = $data['weekend_day_start'] ?? null;
+        $we = $data['weekend_day_end'] ?? null;
+        if (($ws !== null && $ws !== '') xor ($we !== null && $we !== '')) {
+            return response()->json([
+                'message' => 'Invalid operating hours.',
+                'errors' => [
+                    'weekend_day_end' => ['Set both weekend start and end, or leave both empty.'],
+                ],
+            ], 422);
+        }
+        if ($ws !== null && $ws !== '' && $we !== null && $we !== '' && strcmp($we, $ws) <= 0) {
+            return response()->json([
+                'message' => 'Invalid operating hours.',
+                'errors' => [
+                    'weekend_day_end' => ['Weekend end time must be later than weekend start time.'],
+                ],
+            ], 422);
+        }
+
+        $weekendStart = ($ws !== null && $ws !== '') ? $ws : null;
+        $weekendEnd = ($we !== null && $we !== '') ? $we : null;
+
         $doc = PolicyDocument::operatingHours();
         $doc->update([
             'content' => json_encode([
                 'day_start' => $data['day_start'],
                 'day_end' => $data['day_end'],
+                'weekend_day_start' => $weekendStart,
+                'weekend_day_end' => $weekendEnd,
             ], JSON_UNESCAPED_SLASHES),
         ]);
         $doc->refresh();
 
+        $decoded = PolicyDocument::decodedOperatingHours();
+
         return ApiResponse::message('Operating hours saved.', [
             'slug' => $doc->slug,
             'hours' => [
-                'day_start' => $data['day_start'],
-                'day_end' => $data['day_end'],
+                'day_start' => $decoded['day_start'],
+                'day_end' => $decoded['day_end'],
+                'weekend_day_start' => $decoded['weekend_day_start'],
+                'weekend_day_end' => $decoded['weekend_day_end'],
             ],
             'updated_at' => $doc->updated_at?->toIso8601String(),
         ]);

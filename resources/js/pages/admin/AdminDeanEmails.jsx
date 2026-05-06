@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../../api';
 import { unwrapData } from '../../utils/apiEnvelope';
-import { affiliationNamesForType } from '../../constants/affiliationOptions';
 import { ui } from '../../theme';
 
 const TYPE_OPTIONS = [
@@ -22,13 +21,19 @@ export default function AdminDeanEmails() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
+    const [colleges, setColleges] = useState([]);
+    const [offices, setOffices] = useState([]);
 
     const [form, setForm] = useState(emptyForm);
 
     const [editingId, setEditingId] = useState(null);
     const [editDraft, setEditDraft] = useState(null);
 
-    const addNameOptions = useMemo(() => affiliationNamesForType(form.affiliation_type), [form.affiliation_type]);
+    const addNameOptions = useMemo(() => {
+        return form.affiliation_type === 'college'
+            ? colleges.map((c) => c.name)
+            : offices.map((o) => o.name);
+    }, [form.affiliation_type, colleges, offices]);
 
     const load = () => {
         setLoading(true);
@@ -44,6 +49,15 @@ export default function AdminDeanEmails() {
 
     useEffect(() => {
         load();
+    }, []);
+
+    useEffect(() => {
+        api.get('/admin/colleges')
+            .then(({ data }) => setColleges(Array.isArray(unwrapData(data)) ? unwrapData(data) : []))
+            .catch(() => setColleges([]));
+        api.get('/admin/offices')
+            .then(({ data }) => setOffices(Array.isArray(unwrapData(data)) ? unwrapData(data) : []))
+            .catch(() => setOffices([]));
     }, []);
 
     const onCreate = async (e) => {
@@ -147,8 +161,10 @@ export default function AdminDeanEmails() {
 
     const editNameOptions = useMemo(() => {
         if (!editDraft) return [];
-        return affiliationNamesForType(editDraft.affiliation_type);
-    }, [editDraft]);
+        return editDraft.affiliation_type === 'college'
+            ? colleges.map((c) => c.name)
+            : offices.map((o) => o.name);
+    }, [editDraft, colleges, offices]);
 
     const sorted = useMemo(() => rows, [rows]);
 

@@ -17,6 +17,8 @@ class CompleteProfileRequest extends FormRequest
             'name' => ['required', 'string', 'min:2', 'max:255'],
             // Reuse existing column name; acts as "college OR office" based on inferred user_type.
             'college_office' => ['required', 'string', 'max:255'],
+            'college_id' => ['nullable', 'integer', 'exists:colleges,id'],
+            'office_id' => ['nullable', 'integer', 'exists:offices,id'],
             'mobile_number' => ['required', 'string', 'min:7', 'max:32'],
         ];
     }

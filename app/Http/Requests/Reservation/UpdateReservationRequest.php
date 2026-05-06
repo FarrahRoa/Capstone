@@ -4,6 +4,9 @@ namespace App\Http\Requests\Reservation;
 
 use App\Models\Reservation;
 use App\Models\Space;
+use App\Models\User;
+use App\Models\Holiday;
+use App\Models\PolicyDocument;
 use App\Support\ReservationDeanRouting;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -80,6 +83,12 @@ class UpdateReservationRequest extends FormRequest
                 return;
             }
 
+            $holiday = Holiday::matchForDate($start, $tz);
+            if ($holiday !== null) {
+                $validator->errors()->add('start_at', 'Cannot reserve on a holiday.');
+                return;
+            }
+
             if ($end->lte(Carbon::now($tz))) {
                 $validator->errors()->add('end_at', 'Reservation must be in the future.');
                 return;
@@ -97,6 +106,23 @@ class UpdateReservationRequest extends FormRequest
 
             if (! in_array((int) $end->minute, self::ALLOWED_MINUTES, true)) {
                 $validator->errors()->add('end_at', 'End time minutes must be :00 or :30.');
+                return;
+            }
+
+            if (PolicyDocument::reservationOutsideOperatingHours($start, $end, $tz)) {
+                $validator->errors()->add('start_at', 'The selected time is outside the library\'s operating hours.');
+                return;
+            }
+
+            $userType = $this->user()->user_type ?? User::getUserTypeFromEmail((string) $this->user()->email);
+            $maxMinutes = $userType === User::USER_TYPE_STUDENT ? 120 : 180;
+            $maxHours = $maxMinutes / 60;
+            $durationMinutes = $start->diffInMinutes($end);
+            if ($durationMinutes > $maxMinutes) {
+                $validator->errors()->add(
+                    'end_at',
+                    "You have exceeded your maximum booking limit of {$maxHours} hours for your account type."
+                );
                 return;
             }
 

@@ -17,6 +17,8 @@ Route::get('/public/availability/month-overview', [App\Http\Controllers\Api\Avai
 Route::get('/availability', [App\Http\Controllers\Api\AvailabilityController::class, 'index']);
 Route::get('/availability/month-summary', [App\Http\Controllers\Api\AvailabilityController::class, 'monthSummary']);
 Route::get('/availability/month-overview', [App\Http\Controllers\Api\AvailabilityController::class, 'monthOverview']);
+Route::get('/affiliations', [App\Http\Controllers\Api\AffiliationController::class, 'index']);
+Route::get('/policies/operating-hours', [App\Http\Controllers\Api\PolicyController::class, 'operatingHours']);
 
 Route::post('/reservations/confirm-email', [App\Http\Controllers\Api\ReservationController::class, 'confirmEmail']);
 
@@ -30,6 +32,7 @@ Route::middleware(['auth:sanctum', 'token.fresh'])->group(function () {
     Route::get('/reservation-guidelines', [App\Http\Controllers\Api\ReservationGuidelinesController::class, 'show']);
 
     Route::get('/reservations/active-count', [App\Http\Controllers\Api\ReservationController::class, 'activeCount']);
+    Route::get('/reservations/my-day', [App\Http\Controllers\Api\ReservationController::class, 'myDay']);
     Route::get('/reservations', [App\Http\Controllers\Api\ReservationController::class, 'index']);
     Route::get('/reservations/{reservation}', [App\Http\Controllers\Api\ReservationController::class, 'show']);
     Route::post('/reservations', [App\Http\Controllers\Api\ReservationController::class, 'store']);
@@ -76,6 +79,16 @@ Route::middleware(['auth:sanctum', 'token.fresh', 'permission:users.manage'])->p
     Route::get('/roles', [App\Http\Controllers\Api\Admin\UserController::class, 'roles']);
     Route::patch('/users/{user}', [App\Http\Controllers\Api\Admin\UserController::class, 'update']);
     Route::post('/users/invite-portal-role', [App\Http\Controllers\Api\Admin\UserController::class, 'invitePortalRole']);
+
+    Route::get('/colleges', [App\Http\Controllers\Api\Admin\CollegeController::class, 'index']);
+    Route::post('/colleges', [App\Http\Controllers\Api\Admin\CollegeController::class, 'store']);
+    Route::patch('/colleges/{college}', [App\Http\Controllers\Api\Admin\CollegeController::class, 'update']);
+    Route::delete('/colleges/{college}', [App\Http\Controllers\Api\Admin\CollegeController::class, 'destroy']);
+
+    Route::get('/offices', [App\Http\Controllers\Api\Admin\OfficeController::class, 'index']);
+    Route::post('/offices', [App\Http\Controllers\Api\Admin\OfficeController::class, 'store']);
+    Route::patch('/offices/{office}', [App\Http\Controllers\Api\Admin\OfficeController::class, 'update']);
+    Route::delete('/offices/{office}', [App\Http\Controllers\Api\Admin\OfficeController::class, 'destroy']);
 });
 
 Route::middleware(['auth:sanctum', 'token.fresh', 'permission:reports.view'])->prefix('admin')->name('admin.')->group(function () {
@@ -91,6 +104,11 @@ Route::middleware(['auth:sanctum', 'token.fresh', 'permission:policies.manage'])
     Route::put('/policies/reservation-guidelines', [App\Http\Controllers\Api\Admin\PolicyController::class, 'updateReservationGuidelines']);
     Route::get('/policies/operating-hours', [App\Http\Controllers\Api\Admin\PolicyController::class, 'showOperatingHours']);
     Route::put('/policies/operating-hours', [App\Http\Controllers\Api\Admin\PolicyController::class, 'updateOperatingHours']);
+
+    Route::get('/holidays', [App\Http\Controllers\Api\Admin\HolidayController::class, 'index']);
+    Route::post('/holidays', [App\Http\Controllers\Api\Admin\HolidayController::class, 'store']);
+    Route::patch('/holidays/{holiday}', [App\Http\Controllers\Api\Admin\HolidayController::class, 'update']);
+    Route::delete('/holidays/{holiday}', [App\Http\Controllers\Api\Admin\HolidayController::class, 'destroy']);
 
     Route::get('/dean-email-mappings', [App\Http\Controllers\Api\Admin\DeanEmailMappingController::class, 'index']);
     Route::post('/dean-email-mappings', [App\Http\Controllers\Api\Admin\DeanEmailMappingController::class, 'store']);
