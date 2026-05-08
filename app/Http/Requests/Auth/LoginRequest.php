@@ -45,6 +45,12 @@ class LoginRequest extends FormRequest
 
             $accountType = (string) $this->input('account_type');
 
+            // TESTING ONLY: allow exactly one external email to sign in as faculty/staff.
+            // Do not relax this rule for other gmail accounts or any other domains.
+            if (User::isTestingFacultyBypassEmail($email)) {
+                return;
+            }
+
             if (!User::isAllowedDomain($email)) {
                 $validator->errors()->add('email', 'Invalid email domain.');
                 return;

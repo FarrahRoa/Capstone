@@ -79,7 +79,7 @@ class ReservationController extends Controller
 
     public function show(Request $request, Reservation $reservation): JsonResponse
     {
-        if ($reservation->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
+        if ((int) $reservation->user_id !== (int) $request->user()->id) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
         $reservation->load(['space', 'user', 'approver', 'logs.actor']);

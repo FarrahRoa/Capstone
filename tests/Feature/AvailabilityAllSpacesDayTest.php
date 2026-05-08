@@ -8,6 +8,7 @@ use App\Models\Space;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -55,6 +56,7 @@ class AvailabilityAllSpacesDayTest extends TestCase
             'purpose' => 'All-spaces availability test',
         ]);
 
+        Sanctum::actingAs($user);
         $response = $this->getJson('/api/availability?date=2026-08-12');
         $response->assertOk();
 

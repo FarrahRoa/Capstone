@@ -182,6 +182,7 @@ class ReservationOverlapAtomicityTest extends TestCase
             'purpose' => 'Cancelled',
         ]);
 
+        Sanctum::actingAs($user);
         $resp = $this->getJson('/api/availability?space_id='.$space->id.'&date='.$day->toDateString());
         $resp->assertStatus(200);
         $slots = $resp->json('data.0.reserved_slots');

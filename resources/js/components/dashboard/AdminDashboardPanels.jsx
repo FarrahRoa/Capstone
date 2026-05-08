@@ -2,6 +2,10 @@ import { Link } from 'react-router-dom';
 import { formatLogTime, formatReservationRange } from '../../utils/timeDisplay';
 import { ui } from '../../theme';
 
+/** Scrollable body for long admin tables; keeps card titles + footer links outside the scroll region. */
+const TABLE_SCROLL_CLASS =
+    'max-h-[min(50vh,22rem)] sm:max-h-[26.25rem] overflow-y-auto overflow-x-auto overscroll-y-contain -mx-1';
+
 function userInviteSetupLabel(u) {
     if (u?.admin_invited_at && !u?.admin_password_set_at) return 'Invite pending';
     return '—';
@@ -35,16 +39,16 @@ export default function AdminDashboardPanels({
                     <p className="text-sm text-slate-600">No users found.</p>
                 )}
                 {!loading && !statsError && recentUsers.length > 0 && (
-                    <div className="overflow-x-auto -mx-1">
+                    <div className={TABLE_SCROLL_CLASS}>
                         <table className="min-w-[40rem] w-full text-sm text-left">
-                            <thead>
-                                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                                    <th className="py-2 pr-3 font-semibold">Name</th>
-                                    <th className="py-2 pr-3 font-semibold">Email</th>
-                                    <th className="py-2 pr-3 font-semibold">Role</th>
-                                    <th className="py-2 pr-3 font-semibold">Affiliation</th>
-                                    <th className="py-2 pr-3 font-semibold whitespace-nowrap">Joined</th>
-                                    <th className="py-2 pr-3 font-semibold">Invite / setup</th>
+                            <thead className="sticky top-0 z-[1] bg-white shadow-[inset_0_-1px_0_0_rgb(226_232_240)]">
+                                <tr className="text-xs uppercase tracking-wide text-slate-500">
+                                    <th className="py-2 pr-3 font-semibold bg-white">Name</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Email</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Role</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Affiliation</th>
+                                    <th className="py-2 pr-3 font-semibold whitespace-nowrap bg-white">Joined</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Invite / setup</th>
                                 </tr>
                             </thead>
                             <tbody className="text-slate-800">
@@ -98,16 +102,16 @@ export default function AdminDashboardPanels({
                     <p className="text-sm text-slate-600">No reservation activity recorded yet.</p>
                 )}
                 {!feedLoading && !feedError && recentLogs.length > 0 && (
-                    <div className="overflow-x-auto -mx-1">
+                    <div className={TABLE_SCROLL_CLASS}>
                         <table className="min-w-[48rem] w-full text-sm text-left">
-                            <thead>
-                                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                                    <th className="py-2 pr-3 font-semibold whitespace-nowrap">When</th>
-                                    <th className="py-2 pr-3 font-semibold">Action</th>
-                                    <th className="py-2 pr-3 font-semibold">Requester</th>
-                                    <th className="py-2 pr-3 font-semibold">Space</th>
-                                    <th className="py-2 pr-3 font-semibold">Booking</th>
-                                    <th className="py-2 pr-3 font-semibold">Actor</th>
+                            <thead className="sticky top-0 z-[1] bg-white shadow-[inset_0_-1px_0_0_rgb(226_232_240)]">
+                                <tr className="text-xs uppercase tracking-wide text-slate-500">
+                                    <th className="py-2 pr-3 font-semibold whitespace-nowrap bg-white">When</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Action</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Requester</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Space</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Booking</th>
+                                    <th className="py-2 pr-3 font-semibold bg-white">Actor</th>
                                 </tr>
                             </thead>
                             <tbody className="text-slate-800">
@@ -179,10 +183,10 @@ export default function AdminDashboardPanels({
         ) : null;
 
     return (
-        <>
+        <div className="flex flex-col gap-y-8">
             {recentUsersSection}
             {recentReservationActivitySection}
-        </>
+        </div>
     );
 }
 

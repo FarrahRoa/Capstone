@@ -170,11 +170,15 @@ class UpdateReservationRequest extends FormRequest
                 $effectiveAudience = (string) ($reservation->event_request_type ?? '');
             }
 
-            ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
-                $target,
-                $this->user(),
-                ReservationDeanRouting::spaceUsesAvrLobbyAudienceRouting($target) ? $effectiveAudience : null
-            );
+            try {
+                ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
+                    $target,
+                    $this->user(),
+                    ReservationDeanRouting::spaceUsesAvrLobbyAudienceRouting($target) ? $effectiveAudience : null
+                );
+            } catch (Throwable) {
+                $validator->errors()->add('event_request_type', 'Invalid reservation audience for this space.');
+            }
         });
     }
 }

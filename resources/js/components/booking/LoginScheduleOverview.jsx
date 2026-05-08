@@ -13,9 +13,33 @@ import {
     shiftManilaYmd,
 } from '../../utils/manilaTime';
 import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
+import StatusIndicator from './StatusIndicator';
 
 const DAY_START_HOUR = 9;
 const DAY_END_HOUR = 18;
+
+function localYmdNow() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function slotEndInstantForLocalYmd(ymd, slot) {
+    const hh = String(slot?.hourEnd ?? '').padStart(2, '0');
+    const mm = String(slot?.minuteEnd ?? '').padStart(2, '0');
+    const dt = new Date(`${ymd}T${hh}:${mm}:00`);
+    return dt.getTime();
+}
+
+function shouldHideSlotForToday(ymd, slot) {
+    if (!ymd) return false;
+    if (ymd !== localYmdNow()) return false;
+    const endMs = slotEndInstantForLocalYmd(ymd, slot);
+    if (!Number.isFinite(endMs)) return false;
+    return endMs <= Date.now();
+}
 
 function initialSelectedYmd() {
     const t = manilaTodayParts();
@@ -116,6 +140,10 @@ export default function LoginScheduleOverview() {
         () => buildManilaHalfHourSlots(selectedYmd, reservedSlots, DAY_START_HOUR, DAY_END_HOUR),
         [selectedYmd, reservedSlots]
     );
+    const visibleSlots = useMemo(
+        () => slots.filter((slot) => !shouldHideSlotForToday(selectedYmd, slot)),
+        [slots, selectedYmd]
+    );
 
     return (
         <div
@@ -206,15 +234,9 @@ export default function LoginScheduleOverview() {
                     <span>{manilaSelectedDayTitle(selectedYmd)}</span>
                 </div>
 
-                <div className="flex flex-wrap gap-3 text-[11px] text-slate-600">
-                    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                        <span className="h-2 w-2 rounded-sm border-2 border-emerald-500/70 bg-emerald-50" />
-                        Available
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                        <span className="h-2 w-2 rounded-sm bg-slate-300 border border-slate-400/60" />
-                        Booked (approved)
-                    </span>
+                <div className="flex flex-wrap gap-3 text-[11px]">
+                    <StatusIndicator status="available" label="Available" />
+                    <StatusIndicator status="unavailable" label="Booked (approved)" />
                 </div>
 
                 {error && (
@@ -238,7 +260,7 @@ export default function LoginScheduleOverview() {
                         role="list"
                     >
                         <ul className="m-0 list-none divide-y divide-slate-100 p-0">
-                            {slots.map((slot) => {
+                            {visibleSlots.map((slot) => {
                                 const label = formatManilaHalfHourSlotLabel(
                                     slot.hourStart,
                                     slot.minuteStart,

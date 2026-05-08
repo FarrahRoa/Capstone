@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 class PolicyDocument extends Model
 {
@@ -126,8 +127,15 @@ class PolicyDocument extends Model
     /**
      * True if some portion of [start, end) falls outside daily open/close windows (per Manila/app tz calendar day).
      */
-    public static function reservationOutsideOperatingHours(Carbon $start, Carbon $end, string $tz): bool
+    public static function reservationOutsideOperatingHours($start, $end, string $tz): bool
     {
+        try {
+            $start = $start instanceof Carbon ? $start : Carbon::parse((string) $start, $tz);
+            $end = $end instanceof Carbon ? $end : Carbon::parse((string) $end, $tz);
+        } catch (\Throwable) {
+            return true;
+        }
+
         $start = $start->copy()->timezone($tz);
         $end = $end->copy()->timezone($tz);
         if ($end->lte($start)) {

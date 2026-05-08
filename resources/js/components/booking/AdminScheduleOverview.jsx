@@ -18,10 +18,34 @@ import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
 import { colorForOperationalSpaceId } from '../../utils/spaceColors';
 import { operationalSpaceLabel } from '../../utils/operationalSpaceLabel';
 import { ui } from '../../theme';
+import StatusIndicator from './StatusIndicator';
 
 const DAY_START_HOUR = 9;
 const DAY_END_HOUR = 18;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function localYmdNow() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function slotEndInstantForLocalYmd(ymd, slot) {
+    const hh = String(slot?.hourEnd ?? '').padStart(2, '0');
+    const mm = String(slot?.minuteEnd ?? '').padStart(2, '0');
+    const dt = new Date(`${ymd}T${hh}:${mm}:00`);
+    return dt.getTime();
+}
+
+function shouldHideSlotForToday(ymd, slot) {
+    if (!ymd) return false;
+    if (ymd !== localYmdNow()) return false;
+    const endMs = slotEndInstantForLocalYmd(ymd, slot);
+    if (!Number.isFinite(endMs)) return false;
+    return endMs <= Date.now();
+}
 
 function abbreviateSpaceName(name) {
     if (!name || typeof name !== 'string') return '?';
@@ -184,6 +208,10 @@ export default function AdminScheduleOverview({ spaces, spacesLoadError, embedde
         const reserved = Array.isArray(activeRow.reserved_slots) ? activeRow.reserved_slots : [];
         return buildManilaHalfHourSlots(selectedYmd, reserved, DAY_START_HOUR, DAY_END_HOUR);
     }, [activeRow, selectedYmd]);
+    const visibleActiveSlots = useMemo(
+        () => activeSlots.filter((slot) => !shouldHideSlotForToday(selectedYmd, slot)),
+        [activeSlots, selectedYmd]
+    );
 
     const spacesWithColors = useMemo(() => {
         return spaces.map((s) => ({ ...s, __color: colorForOperationalSpaceId(s.id, spaces) }));
@@ -552,15 +580,9 @@ export default function AdminScheduleOverview({ spaces, spacesLoadError, embedde
                                     </div>
                                 )}
 
-                                <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-800">
-                                    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                                        <span className="h-2 w-2 rounded-sm border-2 border-xu-secondary/50 bg-white" />
-                                        Available
-                                    </span>
-                                    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                                        <span className="h-2 w-2 rounded-sm bg-slate-300 border border-slate-400/60" />
-                                        Reserved
-                                    </span>
+                                <div className="mt-3 flex flex-wrap gap-3 text-[11px]">
+                                    <StatusIndicator status="available" label="Available" />
+                                    <StatusIndicator status="unavailable" label="Reserved" />
                                 </div>
                                 <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-700">
                                     <span className="font-medium text-xu-primary">Slots:</span> half-hour grid (:00 / :30)
@@ -593,7 +615,7 @@ export default function AdminScheduleOverview({ spaces, spacesLoadError, embedde
                                     {activeRow?.space?.id && (
                                         <div className="px-3 py-3 sm:px-4">
                                             <ul className="m-0 list-none divide-y divide-slate-100 rounded-lg border border-slate-200/90 p-0">
-                                                {activeSlots.map((slot) => {
+                                                {visibleActiveSlots.map((slot) => {
                                                     const space = activeRow.space;
                                                     const label = formatManilaHalfHourSlotLabel(
                                                         slot.hourStart,

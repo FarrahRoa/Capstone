@@ -11,7 +11,6 @@ use App\Support\ReservationDeanRouting;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class StoreReservationRequest extends FormRequest
@@ -57,9 +56,12 @@ class StoreReservationRequest extends FormRequest
                 ->count();
 
             if ($activeCount >= 3) {
-                throw ValidationException::withMessages([
-                    'reservation' => ['You already have 3 active reservations. Cancel or complete an existing reservation before making another.'],
-                ]);
+                $validator->errors()->add(
+                    'reservation',
+                    'You already have 3 active reservations. Cancel or complete an existing reservation before making another.'
+                );
+
+                return;
             }
 
             if ($validator->errors()->has('space_id')) {
@@ -160,20 +162,26 @@ class StoreReservationRequest extends FormRequest
                 }
             }
 
-            if (! $space->isConfabAssignmentPool()) {
-                $capRaw = $space->capacity;
-                if ($capRaw !== null && (int) $capRaw > 0) {
-                    $pcVal = (int) $this->input('participant_count', 0);
-                    if ($pcVal > (int) $capRaw) {
-                        $validator->errors()->add(
-                            'participant_count',
-                            'The number of attendees exceeds the seating capacity for this space (Max: ' . (int) $capRaw . ' seats).'
-                        );
+            // Reservation Guidelines are the authoritative source for seating capacity.
+            // In this codebase the admin "Reservation Guidelines" screen persists the capacity per space in `spaces.capacity`.
+            $capRaw = $space->capacity;
+            if ($capRaw !== null && (int) $capRaw > 0) {
+                // Back-compat: older clients may send `expected_attendees`; current UI uses `participant_count`.
+                $expectedAttendeesRaw = $this->input('expected_attendees', null);
+                $participantCountRaw = $this->input('participant_count', null);
 
-                        return;
-                    }
+                $field = $expectedAttendeesRaw !== null ? 'expected_attendees' : 'participant_count';
+                $valRaw = $expectedAttendeesRaw !== null ? $expectedAttendeesRaw : $participantCountRaw;
+                $val = (int) ($valRaw ?? 0);
+
+                if ($val > (int) $capRaw) {
+                    $validator->errors()->add($field, 'Exceeded the Seating capacity of ' . $space->userFacingName());
+
+                    return;
                 }
+            }
 
+            if (! $space->isConfabAssignmentPool()) {
                 $conflict = Reservation::conflictsExist(
                     (int) $this->input('space_id'),
                     $this->input('start_at'),
@@ -188,11 +196,15 @@ class StoreReservationRequest extends FormRequest
                 return;
             }
 
-            ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
-                $space,
-                $this->user(),
-                $this->input('event_request_type')
-            );
+            try {
+                ReservationDeanRouting::assertAudienceAndDeanMappingForReservation(
+                    $space,
+                    $this->user(),
+                    $this->input('event_request_type')
+                );
+            } catch (Throwable) {
+                $validator->errors()->add('event_request_type', 'Invalid reservation audience for this space.');
+            }
         });
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Reservation;
 use App\Models\Space;
+use App\Models\User;
 use App\Support\ApiResponse;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -64,21 +65,11 @@ class AvailabilityController extends Controller
                 'space' => array_merge($space->toArray(), [
                     'name' => $displayName,
                 ]),
-                'reserved_slots' => $reserved->map(fn ($r) => [
-                    'id' => $r->id,
-                    'start_at' => $r->start_at->toIso8601String(),
-                    'end_at' => $r->end_at->toIso8601String(),
-                    'status' => $r->status,
-                    // Metadata for schedule rendering (frontend replaces BOOK button when reserved).
-                    'title' => $r->event_title,
-                    'description' => $r->event_description ?: $r->purpose,
-                    'user' => $r->user
-                        ? [
-                            'id' => $r->user->id,
-                            'name' => $r->user->name,
-                        ]
-                        : null,
-                ]),
+                'reserved_slots' => $reserved->map(fn (Reservation $r) => $this->reservedSlotPayloadForViewer(
+                    $r,
+                    $request->user(),
+                    $operational
+                )),
             ];
         }
 
@@ -421,6 +412,46 @@ class AvailabilityController extends Controller
         }
 
         return true;
+    }
+
+    /**
+     * Schedule-board reserved-slot payload. Blocking times are always returned; requester-identifying
+     * fields are omitted unless the viewer owns the reservation or operational disclosure is enabled
+     * ({@see AvailabilityController::index} $operational flag for staff schedule views).
+     *
+     * @return array{id:int|string,start_at:string,end_at:string,status:string,title:?string,description:?string,user:?array{id:int|string,name:string}}
+     */
+    private function reservedSlotPayloadForViewer(Reservation $r, ?User $viewer, bool $operationalReveal): array
+    {
+        $viewerId = $viewer?->id;
+        $isOwner = $viewerId !== null && (int) $r->user_id === (int) $viewerId;
+        $reveal = $isOwner || $operationalReveal;
+
+        $base = [
+            'id' => $r->id,
+            'start_at' => $r->start_at->toIso8601String(),
+            'end_at' => $r->end_at->toIso8601String(),
+            'status' => $r->status,
+        ];
+
+        if (! $reveal) {
+            return $base + [
+                'title' => null,
+                'description' => null,
+                'user' => null,
+            ];
+        }
+
+        return $base + [
+            'title' => $r->event_title,
+            'description' => $r->event_description ?: $r->purpose,
+            'user' => $r->user
+                ? [
+                    'id' => $r->user->id,
+                    'name' => $r->user->name,
+                ]
+                : null,
+        ];
     }
 
     /**

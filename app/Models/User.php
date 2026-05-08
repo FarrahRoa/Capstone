@@ -13,6 +13,15 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    /**
+     * TESTING ONLY: hard-coded faculty bypass for one external email.
+     *
+     * Keep the exception centralized and easy to remove:
+     * - delete this constant + `isTestingFacultyBypassEmail()` and the few call sites below
+     * - do NOT generalize to other gmail accounts
+     */
+    public const TESTING_FACULTY_BYPASS_EMAIL = 'sanguinesenior18@gmail.com';
+
     public const DOMAIN_XU = 'xu.edu.ph';
     public const DOMAIN_MY_XU = 'my.xu.edu.ph';
     public const USER_TYPE_STUDENT = 'student';
@@ -172,6 +181,11 @@ class User extends Authenticatable
         $normalized = AuthEmail::normalize($email);
 
         return static::whereRaw('LOWER(TRIM(email)) = ?', [$normalized])->first();
+    }
+
+    public static function isTestingFacultyBypassEmail(string $email): bool
+    {
+        return AuthEmail::normalize($email) === self::TESTING_FACULTY_BYPASS_EMAIL;
     }
 
     public function isAdmin(): bool
@@ -334,6 +348,10 @@ class User extends Authenticatable
 
     public static function getRoleSlugFromEmail(string $email): ?string
     {
+        if (self::isTestingFacultyBypassEmail($email)) {
+            return 'faculty';
+        }
+
         $domain = strtolower(substr($email, strrpos($email, '@') + 1));
         if ($domain === self::DOMAIN_XU) {
             return 'faculty'; // default for @xu.edu.ph; could be staff/librarian - assign faculty as default
@@ -346,6 +364,10 @@ class User extends Authenticatable
 
     public static function getUserTypeFromEmail(string $email): ?string
     {
+        if (self::isTestingFacultyBypassEmail($email)) {
+            return self::USER_TYPE_FACULTY_STAFF;
+        }
+
         $domain = strtolower(substr($email, strrpos($email, '@') + 1));
         if ($domain === self::DOMAIN_MY_XU) {
             return self::USER_TYPE_STUDENT;
@@ -371,6 +393,11 @@ class User extends Authenticatable
      */
     public static function emailMatchesPublicAccountType(string $accountType, string $normalizedEmail): bool
     {
+        // TESTING ONLY: allow this single external email to pass the public login UI checks.
+        if (self::isTestingFacultyBypassEmail($normalizedEmail)) {
+            return true;
+        }
+
         $domain = strtolower(substr($normalizedEmail, strrpos($normalizedEmail, '@') + 1));
 
         return match ($accountType) {

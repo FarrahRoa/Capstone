@@ -215,17 +215,22 @@ export default function HomeDashboardDeferredSections({
         isAdminContext && (canUsers || canQueue) ? (
             <DeferredMount rootMargin="120px" onMount={() => setAdminPanelsMounted(true)} placeholder={null}>
                 <Suspense fallback={null}>
-                    <AdminDashboardPanels
-                        canUsers={canUsers}
-                        canQueue={canQueue}
-                        isAdminContext={isAdminContext}
-                        loading={loading}
-                        statsError={statsError}
-                        recentUsers={recentUsers}
-                        feedLoading={feedLoading}
-                        feedError={feedError}
-                        recentLogs={recentLogs}
-                    />
+                    <>
+                        <AdminDashboardPanels
+                            canUsers={canUsers}
+                            canQueue={canQueue}
+                            isAdminContext={isAdminContext}
+                            loading={loading}
+                            statsError={statsError}
+                            recentUsers={recentUsers}
+                            feedLoading={feedLoading}
+                            feedError={feedError}
+                            recentLogs={recentLogs}
+                        />
+                        {canQueue && adminPanelsMounted && feedError && !feedLoading ? (
+                            <p className="sr-only">Recent activity could not be loaded.</p>
+                        ) : null}
+                    </>
                 </Suspense>
             </DeferredMount>
         ) : null;
@@ -248,14 +253,11 @@ export default function HomeDashboardDeferredSections({
         ) : null;
 
     return (
-        <>
+        <div className="flex flex-col gap-y-6 sm:gap-y-8">
             {scheduleCard}
             {adminPanels}
             {guidelinesBlock}
-            {isAdminContext && canQueue && adminPanelsMounted && feedError && !feedLoading ? (
-                <p className="sr-only">Recent activity could not be loaded.</p>
-            ) : null}
-        </>
+        </div>
     );
 }
 

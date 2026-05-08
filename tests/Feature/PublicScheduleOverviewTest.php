@@ -8,6 +8,7 @@ use App\Models\Space;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class PublicScheduleOverviewTest extends TestCase
@@ -157,6 +158,7 @@ class PublicScheduleOverviewTest extends TestCase
         $this->assertNotNull($pubRow);
         $this->assertCount(0, $pubRow['occupied_slots'], 'Public overview must not treat pending as occupied');
 
+        Sanctum::actingAs($user);
         $internal = $this->getJson('/api/availability?date=2026-09-02&space_id=' . $space->id);
         $internal->assertOk();
         $rows = $internal->json('data');

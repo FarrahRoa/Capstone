@@ -14,7 +14,6 @@ Route::get('/spaces', [App\Http\Controllers\Api\SpaceController::class, 'index']
 Route::get('/public/schedule-overview', [App\Http\Controllers\Api\AvailabilityController::class, 'publicScheduleOverview']);
 Route::get('/public/availability/month-summary', [App\Http\Controllers\Api\AvailabilityController::class, 'publicMonthSummary']);
 Route::get('/public/availability/month-overview', [App\Http\Controllers\Api\AvailabilityController::class, 'publicMonthOverview']);
-Route::get('/availability', [App\Http\Controllers\Api\AvailabilityController::class, 'index']);
 Route::get('/availability/month-summary', [App\Http\Controllers\Api\AvailabilityController::class, 'monthSummary']);
 Route::get('/availability/month-overview', [App\Http\Controllers\Api\AvailabilityController::class, 'monthOverview']);
 Route::get('/affiliations', [App\Http\Controllers\Api\AffiliationController::class, 'index']);
@@ -23,6 +22,8 @@ Route::get('/policies/operating-hours', [App\Http\Controllers\Api\PolicyControll
 Route::post('/reservations/confirm-email', [App\Http\Controllers\Api\ReservationController::class, 'confirmEmail']);
 
 Route::middleware(['auth:sanctum', 'token.fresh'])->group(function () {
+    Route::get('/availability', [App\Http\Controllers\Api\AvailabilityController::class, 'index']);
+
     Route::get('/me', [App\Http\Controllers\Api\AuthController::class, 'me']);
     Route::get('/dashboard/summary', App\Http\Controllers\Api\DashboardSummaryController::class);
     Route::post('/me/profile', [App\Http\Controllers\Api\AuthController::class, 'completeProfile']);

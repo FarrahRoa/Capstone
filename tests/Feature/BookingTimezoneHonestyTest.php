@@ -59,6 +59,7 @@ class BookingTimezoneHonestyTest extends TestCase
             'purpose' => 'Timezone honesty test',
         ]);
 
+        Sanctum::actingAs($user);
         $response = $this->getJson('/api/availability?date=2026-08-12&space_id='.$space->id);
         $response->assertStatus(200);
 

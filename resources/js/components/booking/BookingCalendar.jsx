@@ -24,11 +24,35 @@ import { unwrapData } from '../../utils/apiEnvelope';
 import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
 import { colorForOperationalSpaceId, colorForSpaceId } from '../../utils/spaceColors';
 import SpaceShowcaseCarousel from './SpaceShowcaseCarousel';
+import StatusIndicator from './StatusIndicator';
 
 const DAY_START_HOUR = 9;
 const DAY_END_HOUR = 18;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function localYmdNow() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function slotEndInstantForLocalYmd(ymd, slot) {
+    const hh = String(slot?.hourEnd ?? '').padStart(2, '0');
+    const mm = String(slot?.minuteEnd ?? '').padStart(2, '0');
+    const dt = new Date(`${ymd}T${hh}:${mm}:00`);
+    return dt.getTime();
+}
+
+function shouldHideSlotForToday(ymd, slot) {
+    if (!ymd) return false;
+    if (ymd !== localYmdNow()) return false;
+    const endMs = slotEndInstantForLocalYmd(ymd, slot);
+    if (!Number.isFinite(endMs)) return false;
+    return endMs <= Date.now();
+}
 
 /** Compact label for tiny calendar chips; full name stays in title/tooltip. */
 function abbreviateSpaceName(name) {
@@ -360,6 +384,10 @@ export default function BookingCalendar({
         () => buildManilaHalfHourSlots(selectedYmd, reservedSlots, DAY_START_HOUR, DAY_END_HOUR),
         [selectedYmd, reservedSlots]
     );
+    const visibleSlots = useMemo(
+        () => slots.filter((slot) => !shouldHideSlotForToday(selectedYmd, slot)),
+        [slots, selectedYmd]
+    );
 
     useEffect(() => {
         if (readOnly) {
@@ -385,11 +413,28 @@ export default function BookingCalendar({
         };
     }, [selectedIsConfabPool, selectedYmd, readOnly]);
 
+    const viewerId = user?.id != null ? String(user.id) : '';
+
+    const hasBlockingReservationsInView = useMemo(() => {
+        if (selectedIsConfabPool) {
+            return (Array.isArray(confabRoomsDayRows) ? confabRoomsDayRows : []).some(
+                (row) => Array.isArray(row?.reserved_slots) && row.reserved_slots.length > 0
+            );
+        }
+        return Array.isArray(reservedSlots) && reservedSlots.length > 0;
+    }, [selectedIsConfabPool, confabRoomsDayRows, reservedSlots]);
+
     const reservationsForDetailPanel = useMemo(() => {
         /** @type {{ id: number|string, start_at: string, end_at: string, title?: string|null, description?: string|null, user?: {id:number|string,name:string}|null, space_name?: string }[]} */
         const out = [];
 
         if (!selectedYmd) return out;
+
+        const isOwnRow = (r) => {
+            if (!r || !viewerId) return false;
+            const rid = r.user?.id != null ? String(r.user.id) : '';
+            return rid !== '' && rid === viewerId;
+        };
 
         if (selectedIsConfabPool) {
             const rows = Array.isArray(confabRoomsDayRows) ? confabRoomsDayRows : [];
@@ -398,7 +443,7 @@ export default function BookingCalendar({
                 if (!space || space.is_confab_pool || space.type !== 'confab') return;
                 const list = Array.isArray(row.reserved_slots) ? row.reserved_slots : [];
                 list.forEach((r) => {
-                    if (!r) return;
+                    if (!r || !isOwnRow(r)) return;
                     out.push({
                         ...r,
                         space_name: space.name || '',
@@ -408,7 +453,7 @@ export default function BookingCalendar({
         } else {
             const list = Array.isArray(reservedSlots) ? reservedSlots : [];
             list.forEach((r) => {
-                if (!r) return;
+                if (!r || !isOwnRow(r)) return;
                 out.push({ ...r, space_name: selectedSpace?.name || '' });
             });
         }
@@ -423,7 +468,7 @@ export default function BookingCalendar({
             seen.add(key);
             return true;
         });
-    }, [selectedYmd, selectedIsConfabPool, confabRoomsDayRows, reservedSlots, selectedSpace?.name]);
+    }, [selectedYmd, selectedIsConfabPool, confabRoomsDayRows, reservedSlots, selectedSpace?.name, viewerId]);
     const aggregatedSlots = useMemo(
         () =>
             readOnly
@@ -431,6 +476,10 @@ export default function BookingCalendar({
                 : null,
         [readOnly, selectedYmd, publicScheduleRows]
     );
+    const visibleAggregatedSlots = useMemo(() => {
+        if (!Array.isArray(aggregatedSlots)) return aggregatedSlots;
+        return aggregatedSlots.filter((slot) => !shouldHideSlotForToday(selectedYmd, slot));
+    }, [aggregatedSlots, selectedYmd]);
     const spacesWithColors = useMemo(() => {
         const pickColor = adminSchedule && !readOnly ? colorForOperationalSpaceId : colorForSpaceId;
         return legendSourceSpaces.map((s) => ({ ...s, __color: pickColor(s.id, spaces) }));
@@ -920,15 +969,15 @@ export default function BookingCalendar({
                                         <p className="text-sm text-slate-600">{manilaSelectedDayTitle(selectedYmd)}</p>
                                         <p className="mt-0.5 text-xs tabular-nums text-slate-500">{selectedYmd} · {BOOKING_TIMEZONE}</p>
                                     </div>
-                                    <div className="flex flex-wrap gap-3 text-xs text-slate-600">
-                                        <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                                            <span className="h-2 w-2 rounded-sm border-2 border-xu-secondary/50 bg-white" />
-                                            {readOnly ? 'Some space still open' : 'Available'}
-                                        </span>
-                                        <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                                            <span className="h-2 w-2 rounded-sm bg-slate-300 border border-slate-400/60" />
-                                            {readOnly ? 'All spaces booked' : 'Not available'}
-                                        </span>
+                                    <div className="flex flex-wrap gap-3 text-xs">
+                                        <StatusIndicator
+                                            status="available"
+                                            label={readOnly ? 'Some space still open' : 'Available'}
+                                        />
+                                        <StatusIndicator
+                                            status="unavailable"
+                                            label={readOnly ? 'All spaces booked' : 'Not available'}
+                                        />
                                     </div>
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
@@ -990,9 +1039,9 @@ export default function BookingCalendar({
                                 </div>
                             )}
 
-                            {readOnly && !loadingSlots && Array.isArray(aggregatedSlots) && aggregatedSlots.length > 0 && (
+                            {readOnly && !loadingSlots && Array.isArray(visibleAggregatedSlots) && visibleAggregatedSlots.length > 0 && (
                                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                                    {aggregatedSlots.every((ag) => ag.freeSpaces.length === 0) && (
+                                    {visibleAggregatedSlots.every((ag) => ag.freeSpaces.length === 0) && (
                                         <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 sm:mx-5">
                                             No open half-hour windows — every active space below is reserved for this date.
                                         </div>
@@ -1003,7 +1052,7 @@ export default function BookingCalendar({
                                         aria-label={`Combined schedule for all library spaces on ${selectedYmd}`}
                                     >
                                         <ul className="m-0 min-w-0 list-none divide-y divide-slate-100 p-0">
-                                            {aggregatedSlots.map((aslot) => {
+                                            {visibleAggregatedSlots.map((aslot) => {
                                                 const label = formatManilaHalfHourSlotLabel(
                                                     aslot.hourStart,
                                                     aslot.minuteStart,
@@ -1108,7 +1157,7 @@ export default function BookingCalendar({
 
                             {!readOnly && selectedSpaceId && !loadingSlots && eligible && (
                                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                                    {slots.every((s) => !s.available) && (
+                                    {visibleSlots.every((s) => !s.available) && (
                                         <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 sm:mx-5">
                                             No open slots — every row below is reserved for this room and date.
                                         </div>
@@ -1120,7 +1169,7 @@ export default function BookingCalendar({
                                     >
                                         <div className="grid grid-cols-1 gap-6 p-3 sm:p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
                                             <ul className="m-0 min-w-0 list-none space-y-2 rounded-xl border border-slate-200/80 bg-white p-2 shadow-sm">
-                                                {slots.map((slot) => {
+                                                {visibleSlots.map((slot) => {
                                                     const label = formatManilaHalfHourSlotLabel(
                                                         slot.hourStart,
                                                         slot.minuteStart,
@@ -1202,7 +1251,9 @@ export default function BookingCalendar({
 
                                                     {reservationsForDetailPanel.length === 0 ? (
                                                         <p className="mt-3 text-sm text-slate-600">
-                                                            No reservations for this date.
+                                                            {hasBlockingReservationsInView
+                                                                ? 'You do not have a reservation for this date.'
+                                                                : 'No reservations for this date.'}
                                                         </p>
                                                     ) : (
                                                         <div className="mt-3 max-h-[18rem] space-y-2 overflow-y-auto pr-1 [scrollbar-width:thin]">
