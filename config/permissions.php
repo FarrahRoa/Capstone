@@ -19,9 +19,9 @@ return [
         ],
         'student_assistant' => [
             'calendar.view',
+            'reservation.create',
+            'reservation.view_own',
             'reservation.view_all',
-            'reservation.approve',
-            'reservation.reject',
         ],
         'librarian' => [
             'calendar.view',

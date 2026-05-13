@@ -13,7 +13,6 @@ const AdminDashboardPanels = lazy(() => import('./AdminDashboardPanels'));
 export default function HomeDashboardDeferredSections({
     user,
     hasPermission,
-    isAdminContext,
     canCalendar,
     canReserve,
     canQueue,
@@ -88,7 +87,7 @@ export default function HomeDashboardDeferredSections({
     }, [canReserve]);
 
     useEffect(() => {
-        if (!isAdminContext || !canUsers || !adminPanelsMounted) {
+        if (!canUsers || !adminPanelsMounted) {
             setRecentUsers([]);
             return;
         }
@@ -104,10 +103,10 @@ export default function HomeDashboardDeferredSections({
         return () => {
             cancelled = true;
         };
-    }, [isAdminContext, canUsers, adminPanelsMounted]);
+    }, [canUsers, adminPanelsMounted]);
 
     useEffect(() => {
-        if (!isAdminContext || !canQueue || !adminPanelsMounted) {
+        if (!canQueue || !adminPanelsMounted) {
             setRecentLogs([]);
             setFeedLoading(false);
             return;
@@ -133,7 +132,7 @@ export default function HomeDashboardDeferredSections({
         return () => {
             cancelled = true;
         };
-    }, [isAdminContext, canQueue, adminPanelsMounted]);
+    }, [canQueue, adminPanelsMounted]);
 
     const scheduleIntro = adminSchedule
         ? {
@@ -212,14 +211,13 @@ export default function HomeDashboardDeferredSections({
     );
 
     const adminPanels =
-        isAdminContext && (canUsers || canQueue) ? (
+        canUsers || canQueue ? (
             <DeferredMount rootMargin="120px" onMount={() => setAdminPanelsMounted(true)} placeholder={null}>
                 <Suspense fallback={null}>
                     <>
                         <AdminDashboardPanels
                             canUsers={canUsers}
                             canQueue={canQueue}
-                            isAdminContext={isAdminContext}
                             loading={loading}
                             statsError={statsError}
                             recentUsers={recentUsers}

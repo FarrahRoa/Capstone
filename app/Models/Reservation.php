@@ -23,6 +23,15 @@ class Reservation extends Model
 
     public const STATUS_PENDING_APPROVAL = 'pending_approval';
     public const STATUS_APPROVED = 'approved';
+
+    /** Admin global override applied; holds the post-override slot like approved. */
+    public const STATUS_OVERRIDDEN = 'overridden';
+
+    /**
+     * Another booking lost its slot to a higher-priority admin override; user must pick a new time/space.
+     */
+    public const STATUS_RESCHEDULE_REQUIRED = 'reschedule_required';
+
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_CANCELLED = 'cancelled';
 
@@ -36,6 +45,8 @@ class Reservation extends Model
         self::STATUS_PENDING_DEAN_APPROVAL => 'Pending dean/office approval',
         self::STATUS_PENDING_APPROVAL => 'Pending approval',
         self::STATUS_APPROVED => 'Approved',
+        self::STATUS_OVERRIDDEN => 'Approved (admin override)',
+        self::STATUS_RESCHEDULE_REQUIRED => 'Reschedule required',
         self::STATUS_REJECTED => 'Rejected',
         self::STATUS_CANCELLED => 'Cancelled',
     ];
@@ -52,6 +63,8 @@ class Reservation extends Model
             self::STATUS_PENDING_DEAN_APPROVAL,
             self::STATUS_PENDING_APPROVAL,
             self::STATUS_APPROVED,
+            self::STATUS_OVERRIDDEN,
+            self::STATUS_RESCHEDULE_REQUIRED,
             self::STATUS_REJECTED,
             self::STATUS_CANCELLED,
         ];
@@ -140,6 +153,13 @@ class Reservation extends Model
             ],
             self::STATUS_APPROVED => [
                 self::STATUS_CANCELLED,
+                self::STATUS_OVERRIDDEN,
+            ],
+            self::STATUS_OVERRIDDEN => [
+                self::STATUS_CANCELLED,
+            ],
+            self::STATUS_RESCHEDULE_REQUIRED => [
+                self::STATUS_CANCELLED,
             ],
             self::STATUS_REJECTED => [
                 self::STATUS_CANCELLED,
@@ -162,7 +182,9 @@ class Reservation extends Model
         'user_id', 'space_id', 'start_at', 'end_at', 'status', 'reservation_number',
         'purpose', 'event_title', 'event_description', 'participant_count', 'event_request_type',
         'verification_token', 'verification_expires_at', 'verified_at',
-            'approved_by', 'approved_at', 'rejected_reason',
+        'approved_by', 'approved_at', 'rejected_reason',
+        'override_reason', 'overridden_by', 'overridden_at',
+        'override_previous_space_id', 'override_previous_start_at', 'override_previous_end_at',
     ];
 
     protected function casts(): array
@@ -174,6 +196,9 @@ class Reservation extends Model
             'verified_at' => 'datetime',
             'approved_at' => 'datetime',
             'cloud_synced_at' => 'datetime',
+            'overridden_at' => 'datetime',
+            'override_previous_start_at' => 'datetime',
+            'override_previous_end_at' => 'datetime',
         ];
     }
 
@@ -193,10 +218,44 @@ class Reservation extends Model
         // Must stay aligned with lifecycle: these are the non-terminal states that reserve time.
         return [
             self::STATUS_APPROVED,
+            self::STATUS_OVERRIDDEN,
             self::STATUS_PENDING_APPROVAL,
             self::STATUS_PENDING_DEAN_APPROVAL,
             self::STATUS_EMAIL_VERIFICATION_PENDING,
         ];
+    }
+
+    /**
+     * Statuses shown as committed bookings on public/operational calendars (not pending pipeline).
+     *
+     * @return array<int, string>
+     */
+    public static function calendarCommittedStatuses(): array
+    {
+        return [
+            self::STATUS_APPROVED,
+            self::STATUS_OVERRIDDEN,
+        ];
+    }
+
+    /**
+     * Reservations an admin may move with the global override tool.
+     *
+     * @return array<int, string>
+     */
+    public static function globallyOverridableStatuses(): array
+    {
+        return [
+            self::STATUS_PENDING_APPROVAL,
+            self::STATUS_PENDING_DEAN_APPROVAL,
+            self::STATUS_EMAIL_VERIFICATION_PENDING,
+            self::STATUS_APPROVED,
+        ];
+    }
+
+    public function canBeGloballyOverriddenByAdmin(): bool
+    {
+        return in_array($this->status, self::globallyOverridableStatuses(), true);
     }
 
     /**
@@ -210,6 +269,7 @@ class Reservation extends Model
             self::STATUS_PENDING_DEAN_APPROVAL,
             self::STATUS_PENDING_APPROVAL,
             self::STATUS_APPROVED,
+            self::STATUS_OVERRIDDEN,
         ];
     }
 
@@ -262,6 +322,11 @@ class Reservation extends Model
         return $this->hasMany(ReservationLog::class);
     }
 
+    public function overrideLogs(): HasMany
+    {
+        return $this->hasMany(ReservationOverrideLog::class);
+    }
+
     public function cloudSyncEvents(): HasMany
     {
         return $this->hasMany(CloudSyncEvent::class);
@@ -280,6 +345,11 @@ class Reservation extends Model
     public function isApproved(): bool
     {
         return $this->status === self::STATUS_APPROVED;
+    }
+
+    public function isConfirmedBooking(): bool
+    {
+        return $this->status === self::STATUS_APPROVED || $this->status === self::STATUS_OVERRIDDEN;
     }
 
     public static function statusLabel(string $status): string

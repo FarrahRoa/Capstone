@@ -14,7 +14,8 @@ export function getSpaceRestrictionLabel(space) {
 
 function isStaffOrAdmin(user) {
     const slug = String(user?.role?.slug || '').toLowerCase();
-    return slug === 'admin' || slug === 'librarian' || slug === 'student_assistant';
+    // Student assistants reserve like students; only true staff portal roles bypass student-only space rules.
+    return slug === 'admin' || slug === 'librarian';
 }
 
 export function getSpaceIneligibilityMessage(space, user) {

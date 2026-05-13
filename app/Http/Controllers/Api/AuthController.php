@@ -98,7 +98,7 @@ class AuthController extends Controller
         $action = (string) $request->input('action');
 
         $user = User::findByNormalizedEmail($email);
-        if ($user && $user->loadMissing('role')->isAdminPortalAccount()) {
+        if ($user && $user->loadMissing('role')->requiresDedicatedAdminPasswordLogin()) {
             return response()->json([
                 'message' => 'This account must sign in via the admin login page.',
             ], 403);
@@ -141,7 +141,8 @@ class AuthController extends Controller
         // Trusted-device bypass is only valid for existing accounts signing in (not sign-up).
         if ($action === LoginRequest::ACTION_SIGN_IN) {
             $trustedPlain = (string) $request->cookie($this->trustedDeviceCookieName(), '');
-            if ($trustedPlain !== '' && $user->is_activated) {
+            // Trusted-device OTP skip applies only after onboarding; see verifyOtp / completeProfile.
+            if ($trustedPlain !== '' && $user->is_activated && $user->isProfileComplete()) {
                 $device = TrustedDevice::findActiveForUserToken($user, $trustedPlain);
                 if ($device) {
                     $days = max(1, (int) config('trusted_device.lifetime_days'));
@@ -249,6 +250,7 @@ class AuthController extends Controller
             'otp_hash' => null,
             'otp_expires_at' => null,
         ]);
+        $user = $user->fresh();
         $user->loadMissing('role');
         $token = $user->createToken('auth')->plainTextToken;
 
@@ -259,8 +261,9 @@ class AuthController extends Controller
             'user' => $this->authUserPayload($user),
         ];
 
-        // Trusted-device cookies are for the normal user OTP flow only, not admin accounts.
-        if (!$user->isAdmin()) {
+        // Trusted device + cookie: only for fully onboarded non-admin users (after profile completion).
+        // First-time users keep Bearer access for /me/profile without trusted-device or idle cutoff.
+        if (! $user->isAdmin() && $user->isProfileComplete()) {
             [$trustedPlain, ] = $this->createTrustedDevice($user, $request);
 
             return response()->json($payload)
@@ -309,10 +312,10 @@ class AuthController extends Controller
 
     public function completeProfile(CompleteProfileRequest $request): JsonResponse
     {
-        /** @var User $user */
-        $user = $request->user();
+        /** @var User $actor */
+        $actor = $request->user();
 
-        $userType = $user->user_type ?? User::getUserTypeFromEmail($user->email);
+        $userType = $actor->user_type ?? User::getUserTypeFromEmail($actor->email);
         if (!$userType) {
             return response()->json(['message' => 'Invalid email domain.'], 422);
         }
@@ -365,7 +368,7 @@ class AuthController extends Controller
             }
         }
 
-        $user->update([
+        $actor->update([
             'name' => $name,
             'college_office' => $unit,
             'college_id' => $userType === User::USER_TYPE_STUDENT
@@ -379,7 +382,24 @@ class AuthController extends Controller
             'profile_completed_at' => now(),
         ]);
 
-        return ApiResponse::data($this->authUserPayload($user->fresh()));
+        $fresh = $actor->fresh();
+        $fresh->loadMissing('role');
+        $payload = $this->authUserPayload($fresh);
+
+        // New session + trusted device: onboarding finished; inactivity timeout now applies to this token.
+        if (! $fresh->isAdmin()) {
+            $actor->currentAccessToken()?->delete();
+            $newToken = $fresh->createToken('auth')->plainTextToken;
+            [$trustedPlain, ] = $this->createTrustedDevice($fresh, $request);
+
+            return response()->json([
+                'data' => $payload,
+                'token' => $newToken,
+                'token_type' => 'Bearer',
+            ])->withCookie($this->makeTrustedDeviceCookie($trustedPlain));
+        }
+
+        return ApiResponse::data($payload);
     }
 
     public function updateAccount(UpdateAccountRequest $request): JsonResponse

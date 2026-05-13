@@ -18,6 +18,10 @@ class ReservationLog extends Model
     public const ACTION_REJECT = 'reject';
     public const ACTION_CANCEL = 'cancel';
     public const ACTION_OVERRIDE = 'override';
+
+    /** Another booking was moved to reschedule_required because an admin override took its slot. */
+    public const ACTION_DISPLACED = 'displaced';
+
     public const ACTION_LABELS = [
         self::ACTION_CREATE => 'Created',
         self::ACTION_UPDATE => 'Edited',
@@ -25,6 +29,7 @@ class ReservationLog extends Model
         self::ACTION_REJECT => 'Rejected',
         self::ACTION_CANCEL => 'Cancelled',
         self::ACTION_OVERRIDE => 'Override approved',
+        self::ACTION_DISPLACED => 'Displaced by admin override',
     ];
 
     /**
@@ -41,6 +46,7 @@ class ReservationLog extends Model
             self::ACTION_REJECT,
             self::ACTION_CANCEL,
             self::ACTION_OVERRIDE,
+            self::ACTION_DISPLACED,
         ];
     }
 

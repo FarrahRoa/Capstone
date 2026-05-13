@@ -6,7 +6,7 @@ import { unwrapData } from '../utils/apiEnvelope';
 import { ui } from '../theme';
 
 export default function CompleteProfile() {
-    const { user, refreshUser } = useAuth();
+    const { user, refreshUser, login } = useAuth();
     const navigate = useNavigate();
     const [name, setName] = useState(user?.name || '');
     const [collegeOffice, setCollegeOffice] = useState(user?.college_office || '');
@@ -50,14 +50,20 @@ export default function CompleteProfile() {
         setError('');
         setSaving(true);
         try {
-            await api.post('/me/profile', {
+            const { data: body } = await api.post('/me/profile', {
                 name,
                 college_office: collegeOffice,
                 college_id: user?.user_type === 'student' ? (collegeId || null) : null,
                 office_id: user?.user_type === 'faculty_staff' ? (officeId || null) : null,
                 mobile_number: mobileNumber,
             });
-            await refreshUser();
+            const userPayload = unwrapData(body);
+            const nextToken = body && typeof body === 'object' && body.token ? String(body.token) : '';
+            if (nextToken) {
+                login(nextToken, userPayload);
+            } else {
+                await refreshUser();
+            }
             sessionStorage.removeItem('xu_profile_completion_after_otp');
             navigate('/', { replace: true });
         } catch (err) {

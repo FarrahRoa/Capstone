@@ -43,6 +43,15 @@ class TrustedDeviceLoginTest extends TestCase
         return null;
     }
 
+    private function postCompleteStudentProfile(string $bearerToken): TestResponse
+    {
+        return $this->withHeader('Authorization', 'Bearer '.$bearerToken)->postJson('/api/me/profile', [
+            'name' => 'Completed User',
+            'college_office' => 'College of Computer Studies',
+            'mobile_number' => '09171234567',
+        ]);
+    }
+
     public function test_first_login_on_new_device_requires_otp_and_does_not_issue_bearer_token(): void
     {
         Mail::fake();
@@ -63,7 +72,7 @@ class TrustedDeviceLoginTest extends TestCase
         Mail::assertSent(OtpMail::class);
     }
 
-    public function test_successful_otp_verification_creates_trusted_device_and_sets_cookie(): void
+    public function test_otp_verify_does_not_create_trusted_device_until_profile_is_completed(): void
     {
         Mail::fake();
         $this->seed(RoleSeeder::class);
@@ -88,6 +97,15 @@ class TrustedDeviceLoginTest extends TestCase
         ]);
         $verify->assertOk();
         $verify->assertJsonStructure(['token', 'user']);
+        $this->assertDatabaseCount('trusted_devices', 0);
+        $this->assertNull($this->parseTrustedDevicePlainFromResponse($verify));
+
+        $bearer = $verify->json('token');
+        $this->assertNotNull($bearer);
+
+        $profile = $this->postCompleteStudentProfile($bearer);
+        $profile->assertOk();
+        $profile->assertJsonStructure(['data', 'token']);
 
         $user = User::where('email', 'afterotp@my.xu.edu.ph')->first();
         $this->assertNotNull($user);
@@ -96,7 +114,7 @@ class TrustedDeviceLoginTest extends TestCase
             'user_id' => $user->id,
         ]);
 
-        $plain = $this->parseTrustedDevicePlainFromResponse($verify);
+        $plain = $this->parseTrustedDevicePlainFromResponse($profile);
         $this->assertNotNull($plain);
         $this->assertGreaterThan(40, strlen($plain));
 
@@ -130,7 +148,12 @@ class TrustedDeviceLoginTest extends TestCase
             'otp' => $otp,
         ]);
         $verify->assertOk();
-        $plain = $this->parseTrustedDevicePlainFromResponse($verify);
+        $bearer = $verify->json('token');
+        $this->assertNotNull($bearer);
+
+        $profile = $this->postCompleteStudentProfile($bearer);
+        $profile->assertOk();
+        $plain = $this->parseTrustedDevicePlainFromResponse($profile);
         $this->assertNotNull($plain);
 
         Mail::fake();
@@ -282,8 +305,13 @@ class TrustedDeviceLoginTest extends TestCase
             'otp' => $otp,
         ]);
         $verify->assertOk();
-        $plain = $this->parseTrustedDevicePlainFromResponse($verify);
-        $token = $verify->json('token');
+        $otpToken = $verify->json('token');
+        $this->assertNotNull($otpToken);
+
+        $profile = $this->postCompleteStudentProfile($otpToken);
+        $profile->assertOk();
+        $plain = $this->parseTrustedDevicePlainFromResponse($profile);
+        $token = $profile->json('token');
         $this->assertNotNull($plain);
         $this->assertNotNull($token);
 
@@ -343,10 +371,42 @@ class TrustedDeviceLoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJsonPath('requires_otp', false);
-        $response->assertJsonPath('user.requires_profile_completion', true);
-        $response->assertJsonPath('user.profile_complete', false);
-        Mail::assertNothingSent();
+        $response->assertJsonPath('requires_otp', true);
+        $response->assertJsonPath('message', 'OTP sent to your XU email.');
+        Mail::assertSent(OtpMail::class);
+    }
+
+    public function test_returning_user_with_completed_profile_gets_trusted_device_on_otp_verify(): void
+    {
+        Mail::fake();
+        $this->seed(RoleSeeder::class);
+
+        $student = Role::where('slug', 'student')->first();
+        $this->assertNotNull($student);
+        $user = User::create([
+            'name' => 'Returning User',
+            'email' => 'returningtrust@my.xu.edu.ph',
+            'password' => Hash::make('x'),
+            'role_id' => $student->id,
+            'is_activated' => true,
+            'college_office' => 'College of Computer Studies',
+            'user_type' => User::USER_TYPE_STUDENT,
+            'mobile_number' => '09170000000',
+        ]);
+
+        $otp = '123456';
+        $user->forceFill([
+            'otp_hash' => Hash::make($otp),
+            'otp_expires_at' => now()->addMinutes(10),
+        ])->save();
+
+        $verify = $this->postJson('/api/otp/verify', [
+            'email' => 'returningtrust@my.xu.edu.ph',
+            'otp' => $otp,
+        ]);
+        $verify->assertOk();
+        $this->assertDatabaseCount('trusted_devices', 1);
+        $this->assertNotNull($this->parseTrustedDevicePlainFromResponse($verify));
     }
 
     public function test_admin_login_is_unchanged_and_does_not_set_trusted_device_cookie(): void

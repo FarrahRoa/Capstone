@@ -205,6 +205,19 @@ class User extends Authenticatable
         return in_array($this->role->slug, ['admin', 'librarian', 'student_assistant'], true);
     }
 
+    /**
+     * Librarian and system admin must use /admin/login (password). Student assistants use the normal OTP flow
+     * like other students while still receiving admin-route permissions from their role.
+     */
+    public function requiresDedicatedAdminPasswordLogin(): bool
+    {
+        if (!$this->role) {
+            return false;
+        }
+
+        return in_array($this->role->slug, ['admin', 'librarian'], true);
+    }
+
     public function isStudentAssistant(): bool
     {
         return $this->role && $this->role->isStudentAssistant();

@@ -59,6 +59,7 @@ class ProfileCompletionTest extends TestCase
             'mobile_number' => '09171234567',
         ]);
         $ok->assertOk();
+        $ok->assertJsonStructure(['data', 'token', 'token_type']);
         $ok->assertJsonPath('data.name', 'Juan Dela Cruz');
         $ok->assertJsonPath('data.college_office', 'College of Computer Studies');
         $ok->assertJsonPath('data.user_type', User::USER_TYPE_STUDENT);
@@ -91,6 +92,7 @@ class ProfileCompletionTest extends TestCase
             'mobile_number' => '09981234567',
         ]);
         $ok->assertOk();
+        $ok->assertJsonStructure(['data', 'token', 'token_type']);
         $ok->assertJsonPath('data.name', 'Maria Santos');
         $ok->assertJsonPath('data.college_office', "Treasurer's Office");
         $ok->assertJsonPath('data.user_type', User::USER_TYPE_FACULTY_STAFF);

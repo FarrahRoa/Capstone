@@ -112,7 +112,7 @@ class AvailabilityController extends Controller
         if ($physicalSpaceIds !== []) {
             $occupiedBySpace = Reservation::query()
                 ->whereIn('space_id', $physicalSpaceIds)
-                ->where('status', Reservation::STATUS_APPROVED)
+                ->whereIn('status', Reservation::calendarCommittedStatuses())
                 ->overlapping($dayStart, $dayEnd)
                 ->orderBy('start_at')
                 ->get(['space_id', 'start_at', 'end_at'])
@@ -182,7 +182,7 @@ class AvailabilityController extends Controller
             ? collect()
             : Reservation::query()
                 ->where('space_id', $space->id)
-                ->where('status', Reservation::STATUS_APPROVED)
+                ->whereIn('status', Reservation::calendarCommittedStatuses())
                 ->where('start_at', '<', $rangeEnd)
                 ->where('end_at', '>', $rangeStart)
                 ->orderBy('start_at')
@@ -228,7 +228,7 @@ class AvailabilityController extends Controller
 
         /** @var Collection<int, Reservation> $reservations */
         $reservations = Reservation::query()
-            ->where('status', Reservation::STATUS_APPROVED)
+            ->whereIn('status', Reservation::calendarCommittedStatuses())
             ->where('start_at', '<', $rangeEnd)
             ->where('end_at', '>', $rangeStart)
             ->get(['space_id', 'start_at', 'end_at']);

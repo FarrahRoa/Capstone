@@ -14,7 +14,6 @@ function userInviteSetupLabel(u) {
 export default function AdminDashboardPanels({
     canUsers,
     canQueue,
-    isAdminContext,
     loading,
     statsError,
     recentUsers,
@@ -23,7 +22,7 @@ export default function AdminDashboardPanels({
     recentLogs,
 }) {
     const recentUsersSection =
-        isAdminContext && canUsers ? (
+        canUsers ? (
             <section className="rounded-xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-sm">
                 <h2 className={`${ui.sectionLabel} mb-1`}>Recent users</h2>
                 <p className="text-xs text-slate-600 mb-4">
@@ -85,7 +84,7 @@ export default function AdminDashboardPanels({
         ) : null;
 
     const recentReservationActivitySection =
-        isAdminContext && canQueue ? (
+        canQueue ? (
             <section className="rounded-xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-sm">
                 <h2 className={`${ui.sectionLabel} mb-1`}>Recent reservation activity</h2>
                 <p className="text-xs text-slate-600 mb-4">

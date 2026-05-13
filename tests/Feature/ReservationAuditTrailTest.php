@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\ReservationApprovedMail;
+use App\Mail\ReservationGloballyOverriddenMail;
 use App\Mail\ReservationRejectedMail;
 use App\Mail\ReservationVerificationMail;
 use App\Models\Reservation;
@@ -103,7 +104,7 @@ class ReservationAuditTrailTest extends TestCase
     {
         Mail::fake();
 
-        $operator = $this->makeUserWithRole('student_assistant', 'Student Assistant');
+        $operator = $this->makeUserWithRole('librarian', 'Librarian');
         $requester = $this->makeUserWithRole('student', 'Student');
         $reservation = $this->makePendingReservation($requester);
         Sanctum::actingAs($operator);
@@ -156,13 +157,18 @@ class ReservationAuditTrailTest extends TestCase
         Sanctum::actingAs($admin);
 
         $overrideReservation = $this->makePendingReservation($requester);
+        $targetSpace = $this->makeSpace();
         $cancelReservation = $this->makePendingReservation($requester);
         $cancelReservation->update(['status' => Reservation::STATUS_APPROVED]);
 
         $overrideResponse = $this->postJson("/api/admin/reservations/{$overrideReservation->id}/override", [
-            'notes' => 'Manual override approved',
+            'reason' => 'Manual override approved',
+            'space_id' => $targetSpace->id,
+            'start_at' => $overrideReservation->start_at->toIso8601String(),
+            'end_at' => $overrideReservation->end_at->toIso8601String(),
         ]);
         $overrideResponse->assertStatus(200);
+        Mail::assertSent(ReservationGloballyOverriddenMail::class);
 
         $cancelResponse = $this->postJson("/api/admin/reservations/{$cancelReservation->id}/cancel", [
             'notes' => 'Cancelled by admin for conflict',

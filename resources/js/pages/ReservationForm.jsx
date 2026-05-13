@@ -46,12 +46,11 @@ function initialDateFromParams(dateParam) {
     return manilaYmdFromInstant(new Date());
 }
 
-/** Staff portal roles use the same /reserve page with visible time sublabels for accessibility audits. */
-const STAFF_PORTAL_ROLE_SLUGS = new Set(['admin', 'librarian', 'student_assistant']);
-
 export default function ReservationForm() {
-    const { user } = useAuth();
-    const visibleReservationTimeLabels = STAFF_PORTAL_ROLE_SLUGS.has((user?.role?.slug || '').toLowerCase());
+    const { user, hasPermission } = useAuth();
+    const visibleReservationTimeLabels =
+        hasPermission('reservation.view_all') ||
+        new Set(['admin', 'librarian']).has((user?.role?.slug || '').toLowerCase());
     const [searchParams] = useSearchParams();
     const spaceId = searchParams.get('space_id');
     const dateParam = searchParams.get('date');

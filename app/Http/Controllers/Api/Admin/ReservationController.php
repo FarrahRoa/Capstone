@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ApproveReservationRequest;
 use App\Http\Requests\Admin\CancelReservationRequest;
+use App\Http\Requests\Admin\GlobalReservationOverrideRequest;
 use App\Http\Requests\Admin\RejectReservationRequest;
 use App\Mail\Reservation\ReservationApprovedMail;
 use App\Mail\Reservation\ReservationRejectedMail;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Space;
+use App\Services\ReservationGlobalOverrideService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 class ReservationController extends Controller
 {
@@ -239,113 +242,28 @@ class ReservationController extends Controller
         );
     }
 
-    public function override(Request $request, Reservation $reservation): JsonResponse
-    {
-        if ($reservation->status === Reservation::STATUS_PENDING_DEAN_APPROVAL) {
+    public function override(
+        GlobalReservationOverrideRequest $request,
+        Reservation $reservation,
+        ReservationGlobalOverrideService $globalOverride,
+    ): JsonResponse {
+        $actor = $request->user();
+        $actor->loadMissing('role');
+        if (! $actor->role || $actor->role->slug !== 'admin') {
             return response()->json([
-                'message' => 'This reservation is awaiting dean/office approval. Library staff cannot override it until that step is complete.',
-            ], 422);
+                'message' => 'Only system administrators may use global override.',
+            ], 403);
         }
 
-        if (! $reservation->canTransitionTo(Reservation::STATUS_APPROVED)) {
-            return response()->json(['message' => 'Reservation is not pending approval.'], 422);
+        try {
+            $fresh = $globalOverride->apply($actor, $reservation, $request->validated());
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 403);
         }
-
-        $request->validate([
-            'notes' => 'nullable|string|max:500',
-            'assigned_space_id' => 'nullable|integer|exists:spaces,id',
-        ]);
-
-        $reservation->loadMissing('space');
-        $notes = $request->input('notes');
-        $assignedId = (int) $request->input('assigned_space_id', 0);
-
-        if ($reservation->space?->isConfabAssignmentPool()) {
-            if ($assignedId <= 0) {
-                return response()->json([
-                    'message' => 'Choose a specific confab room before approving.',
-                    'errors' => ['assigned_space_id' => ['Select a free confab room for this time slot.']],
-                ], 422);
-            }
-
-            $target = Space::query()
-                ->whereKey($assignedId)
-                ->where('type', Space::TYPE_CONFAB)
-                ->where('is_confab_pool', false)
-                ->where('is_active', true)
-                ->first();
-
-            if (! $target) {
-                return response()->json([
-                    'message' => 'Invalid confab room selection.',
-                    'errors' => ['assigned_space_id' => ['Not an assignable confab room.']],
-                ], 422);
-            }
-
-            try {
-                DB::transaction(function () use ($reservation, $assignedId, $request, $notes, $target) {
-                    Space::whereKey($assignedId)->lockForUpdate()->first();
-
-                    if (Reservation::conflictsExist(
-                        $assignedId,
-                        $reservation->start_at,
-                        $reservation->end_at,
-                        $reservation->id
-                    )) {
-                        throw ValidationException::withMessages([
-                            'assigned_space_id' => ['That confab room is already booked for this slot.'],
-                        ]);
-                    }
-
-                    $reservationNumber = $reservation->reservation_number ?: ('RES-' . strtoupper(Str::random(8)));
-                    $logNotes = trim(($notes ? $notes.' ' : '').'Assigned room: '.$target->name);
-
-                    $reservation->update([
-                        'space_id' => $assignedId,
-                        'status' => Reservation::STATUS_APPROVED,
-                        'reservation_number' => $reservationNumber,
-                        'approved_by' => $request->user()->id,
-                        'approved_at' => now(),
-                    ]);
-
-                    ReservationLog::create([
-                        'reservation_id' => $reservation->id,
-                        'actor_user_id' => $request->user()->id,
-                        'actor_type' => ReservationLog::ACTOR_ADMIN,
-                        'action' => ReservationLog::ACTION_OVERRIDE,
-                        'notes' => $logNotes !== '' ? $logNotes : null,
-                    ]);
-                });
-            } catch (ValidationException $e) {
-                return response()->json([
-                    'message' => $e->getMessage(),
-                    'errors' => $e->errors(),
-                ], 422);
-            }
-        } else {
-            $reservationNumber = $reservation->reservation_number ?: ('RES-' . strtoupper(Str::random(8)));
-            $reservation->update([
-                'status' => Reservation::STATUS_APPROVED,
-                'reservation_number' => $reservationNumber,
-                'approved_by' => $request->user()->id,
-                'approved_at' => now(),
-            ]);
-            ReservationLog::create([
-                'reservation_id' => $reservation->id,
-                'actor_user_id' => $request->user()->id,
-                'actor_type' => ReservationLog::ACTOR_ADMIN,
-                'action' => ReservationLog::ACTION_OVERRIDE,
-                'notes' => $notes,
-            ]);
-        }
-
-        $fresh = $reservation->fresh(['user', 'space', 'approver']);
-        \Illuminate\Support\Facades\Mail::to($fresh->user->email)
-            ->send(new ReservationApprovedMail($fresh));
 
         return ApiResponse::message(
-            'Override applied.',
-            $fresh
+            'Global override applied.',
+            $fresh->loadMissing(['user', 'space', 'approver', 'logs.actor'])
         );
     }
 }

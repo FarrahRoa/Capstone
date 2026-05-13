@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Mail\ReservationApprovedMail;
 use App\Mail\ReservationRejectedMail;
 use App\Models\Reservation;
 use App\Models\Role;
@@ -100,7 +99,7 @@ class ReservationQueueWorkflowPermissionTest extends TestCase
         Mail::assertSent(ReservationRejectedMail::class);
     }
 
-    public function test_student_assistant_can_view_queue_and_approve(): void
+    public function test_student_assistant_can_view_queue_but_cannot_approve(): void
     {
         Mail::fake();
 
@@ -113,19 +112,11 @@ class ReservationQueueWorkflowPermissionTest extends TestCase
         $listResponse->assertJsonPath('data.0.id', $reservation->id);
 
         $approveResponse = $this->postJson("/api/admin/reservations/{$reservation->id}/approve", [
-            'notes' => 'Approved by student assistant',
+            'notes' => 'Should not be allowed',
         ]);
 
-        $approveResponse->assertStatus(200);
-        $approveResponse->assertJsonFragment([
-            'message' => 'Reservation approved.',
-        ]);
-        $this->assertDatabaseHas('reservations', [
-            'id' => $reservation->id,
-            'status' => Reservation::STATUS_APPROVED,
-            'approved_by' => $assistant->id,
-        ]);
-        Mail::assertSent(ReservationApprovedMail::class);
+        $approveResponse->assertStatus(403);
+        Mail::assertNothingSent();
     }
 
     public function test_librarian_can_view_queue_and_reject(): void

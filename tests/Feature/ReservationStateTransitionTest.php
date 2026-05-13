@@ -263,17 +263,25 @@ class ReservationStateTransitionTest extends TestCase
         Sanctum::actingAs($admin);
 
         $pending = $this->makeReservation(Reservation::STATUS_PENDING_APPROVAL);
+        $target = $this->makeSpace();
         $ok = $this->postJson("/api/admin/reservations/{$pending->id}/override", [
-            'notes' => 'Override ok',
+            'reason' => 'Override ok',
+            'space_id' => $target->id,
+            'start_at' => $pending->start_at->toIso8601String(),
+            'end_at' => $pending->end_at->toIso8601String(),
         ]);
         $ok->assertStatus(200);
         $pending->refresh();
-        $this->assertSame(Reservation::STATUS_APPROVED, $pending->status);
+        $this->assertSame(Reservation::STATUS_OVERRIDDEN, $pending->status);
 
-        $emailPending = $this->makeReservation(Reservation::STATUS_EMAIL_VERIFICATION_PENDING);
-        $fail = $this->postJson("/api/admin/reservations/{$emailPending->id}/override", []);
+        $rejected = $this->makeReservation(Reservation::STATUS_REJECTED);
+        $fail = $this->postJson("/api/admin/reservations/{$rejected->id}/override", [
+            'reason' => 'Nope',
+            'space_id' => $this->makeSpace()->id,
+            'start_at' => $rejected->start_at->toIso8601String(),
+            'end_at' => $rejected->end_at->toIso8601String(),
+        ]);
         $fail->assertStatus(422);
-        $fail->assertJsonFragment(['message' => 'Reservation is not pending approval.']);
     }
 
     public function test_blocking_statuses_are_subset_of_workflow_and_hold_slot(): void
@@ -284,6 +292,7 @@ class ReservationStateTransitionTest extends TestCase
         $this->assertSame(
             [
                 Reservation::STATUS_APPROVED,
+                Reservation::STATUS_OVERRIDDEN,
                 Reservation::STATUS_PENDING_APPROVAL,
                 Reservation::STATUS_PENDING_DEAN_APPROVAL,
                 Reservation::STATUS_EMAIL_VERIFICATION_PENDING,

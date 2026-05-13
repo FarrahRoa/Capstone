@@ -500,4 +500,36 @@ class AuthFirstTimeLoginTest extends TestCase
         $response->assertJsonValidationErrors('email');
         Mail::assertNothingSent();
     }
+
+    public function test_student_assistant_may_use_main_login_otp_flow(): void
+    {
+        Mail::fake();
+        $this->seed(RoleSeeder::class);
+
+        $role = Role::firstOrCreate(
+            ['slug' => 'student_assistant'],
+            ['name' => 'Student Assistant', 'description' => 'Test assistant']
+        );
+
+        User::create([
+            'name' => 'Queue Assistant',
+            'email' => 'assistant.otp@my.xu.edu.ph',
+            'password' => Hash::make('not-used-for-main-login'),
+            'role_id' => $role->id,
+            'is_activated' => true,
+        ]);
+
+        $response = $this->postJson('/api/login', [
+            'email' => 'assistant.otp@my.xu.edu.ph',
+            'account_type' => User::PUBLIC_ACCOUNT_STUDENT,
+            'action' => 'sign_in',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'requires_otp' => true,
+            'message' => 'OTP sent to your XU email.',
+        ]);
+        Mail::assertSent(OtpMail::class);
+    }
 }

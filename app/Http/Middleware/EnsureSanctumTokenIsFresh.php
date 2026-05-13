@@ -7,6 +7,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Enforces per-token idle timeout for Sanctum personal access tokens.
+ * Skips enforcement until {@see \App\Models\User::isProfileComplete()} so the
+ * Login → OTP → Complete Profile path is not cut off by inactivity.
+ */
 class EnsureSanctumTokenIsFresh
 {
     public function handle(Request $request, Closure $next): Response
@@ -22,6 +27,13 @@ class EnsureSanctumTokenIsFresh
         }
 
         $user->loadMissing('role');
+
+        // First-time flow (OTP → complete profile): do not enforce Bearer idle timeout until onboarding
+        // matches {@see User::isProfileComplete()} so users can finish their profile without spurious 401s.
+        if (method_exists($user, 'isProfileComplete') && ! $user->isProfileComplete()) {
+            return $next($request);
+        }
+
         $isAdminPortal = method_exists($user, 'isAdminPortalAccount') && $user->isAdminPortalAccount();
 
         $idleMinutes = (int) ($isAdminPortal

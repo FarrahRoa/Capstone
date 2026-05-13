@@ -108,12 +108,13 @@ class AvailabilityPrivacyTest extends TestCase
         $this->assertSame('Staff-visible title', $slot['title']);
     }
 
-    public function test_user_api_reservation_show_is_owner_only_even_for_admin_role(): void
+    public function test_user_api_reservation_show_allows_view_all_but_blocks_other_students(): void
     {
         $adminRole = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin', 'description' => 't']);
         $studentRole = Role::firstOrCreate(['slug' => 'student'], ['name' => 'Student', 'description' => 't']);
 
         $owner = User::factory()->create(['role_id' => $studentRole->id, 'is_activated' => true]);
+        $otherStudent = User::factory()->create(['role_id' => $studentRole->id, 'is_activated' => true]);
         $admin = User::factory()->create(['role_id' => $adminRole->id, 'is_activated' => true]);
 
         $space = Space::create([
@@ -130,10 +131,13 @@ class AvailabilityPrivacyTest extends TestCase
             'start_at' => now()->addDays(2)->setTime(9, 0),
             'end_at' => now()->addDays(2)->setTime(10, 0),
             'status' => Reservation::STATUS_APPROVED,
-            'purpose' => 'Owner only on user route',
+            'purpose' => 'Queue operators may read via user route when permitted',
         ]);
 
         Sanctum::actingAs($admin);
+        $this->getJson('/api/reservations/'.$reservation->id)->assertOk();
+
+        Sanctum::actingAs($otherStudent);
         $this->getJson('/api/reservations/'.$reservation->id)->assertForbidden();
     }
 }

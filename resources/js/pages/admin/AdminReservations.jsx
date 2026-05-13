@@ -6,8 +6,23 @@ import { getReservationActionLabel, getReservationStatusBadgeClass, getReservati
 import { formatLogTime, formatReservationRange } from '../../utils/timeDisplay';
 import { ui } from '../../theme';
 
+const GLOBAL_OVERRIDE_STATUSES = new Set([
+    'pending_approval',
+    'pending_dean_approval',
+    'email_verification_pending',
+    'approved',
+]);
+
+function isoToDatetimeLocalValue(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function AdminReservations() {
-    const { hasPermission } = useAuth();
+    const { user, hasPermission } = useAuth();
     const [reservations, setReservations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('pending_approval');
@@ -16,6 +31,17 @@ export default function AdminReservations() {
     const [feedback, setFeedback] = useState(null);
     const [confabPick, setConfabPick] = useState({});
     const [assignOptions, setAssignOptions] = useState({});
+    const [overrideModal, setOverrideModal] = useState(null);
+    const [overrideForm, setOverrideForm] = useState({
+        space_id: '',
+        start_at: '',
+        end_at: '',
+        reason: '',
+    });
+    const [spacesList, setSpacesList] = useState([]);
+    const [spacesError, setSpacesError] = useState(false);
+
+    const isSystemAdmin = String(user?.role?.slug || '').toLowerCase() === 'admin';
 
     const load = () => {
         setLoading(true);
@@ -31,9 +57,31 @@ export default function AdminReservations() {
 
     useEffect(() => load(), [statusFilter]);
 
+    useEffect(() => {
+        if (!isSystemAdmin) {
+            setSpacesList([]);
+            return;
+        }
+        api.get('/spaces')
+            .then(({ data }) => {
+                const list = unwrapData(data);
+                setSpacesList(Array.isArray(list) ? list : []);
+                setSpacesError(false);
+            })
+            .catch(() => {
+                setSpacesList([]);
+                setSpacesError(true);
+            });
+    }, [isSystemAdmin]);
+
     const canApprove = hasPermission('reservation.approve');
     const canReject = hasPermission('reservation.reject');
     const canOverride = hasPermission('reservation.override');
+    const queueViewOnly =
+        hasPermission('reservation.view_all') &&
+        !canApprove &&
+        !canReject &&
+        !canOverride;
 
     const clearFeedback = () => setFeedback(null);
 
@@ -50,6 +98,68 @@ export default function AdminReservations() {
     };
 
     const needsConfabAssign = (r) => r.status === 'pending_approval' && r.space?.is_confab_pool;
+
+    const canGlobalOverride = (r) => isSystemAdmin && GLOBAL_OVERRIDE_STATUSES.has(r.status);
+
+    const openGlobalOverrideModal = (r) => {
+        if (!canGlobalOverride(r)) return;
+        clearFeedback();
+        setOverrideModal(r);
+        setOverrideForm({
+            space_id: String(r.space?.id || ''),
+            start_at: isoToDatetimeLocalValue(r.start_at),
+            end_at: isoToDatetimeLocalValue(r.end_at),
+            reason: '',
+        });
+    };
+
+    const submitGlobalOverride = () => {
+        if (!overrideModal) return;
+        const reason = overrideForm.reason.trim();
+        if (!reason) {
+            setFeedback({ type: 'error', text: 'Override reason is required.' });
+            return;
+        }
+        const sid = Number(overrideForm.space_id);
+        if (!sid) {
+            setFeedback({ type: 'error', text: 'Choose a library space.' });
+            return;
+        }
+        if (!overrideForm.start_at || !overrideForm.end_at) {
+            setFeedback({ type: 'error', text: 'Start and end times are required.' });
+            return;
+        }
+        const startIso = new Date(overrideForm.start_at).toISOString();
+        const endIso = new Date(overrideForm.end_at).toISOString();
+        if (new Date(endIso) <= new Date(startIso)) {
+            setFeedback({ type: 'error', text: 'End must be after start.' });
+            return;
+        }
+        clearFeedback();
+        setActionId(overrideModal.id);
+        api.post(`/admin/reservations/${overrideModal.id}/override`, {
+            reason,
+            space_id: sid,
+            start_at: startIso,
+            end_at: endIso,
+        })
+            .then(({ data }) => {
+                setActionId(null);
+                setOverrideModal(null);
+                setFeedback({ type: 'success', text: data?.message || 'Global override applied.' });
+                load();
+            })
+            .catch((err) => {
+                setActionId(null);
+                const msg =
+                    err.response?.data?.errors?.reason?.[0]
+                    || err.response?.data?.errors?.space_id?.[0]
+                    || err.response?.data?.errors?.slot?.[0]
+                    || err.response?.data?.message
+                    || 'Failed to apply global override.';
+                setFeedback({ type: 'error', text: msg });
+            });
+    };
 
     const approve = (r) => {
         if (!canApprove) return;
@@ -130,45 +240,18 @@ export default function AdminReservations() {
             });
     };
 
-    const overrideApprove = (r) => {
-        if (!canOverride) return;
-        clearFeedback();
-        const id = r.id;
-        if (needsConfabAssign(r)) {
-            const sid = Number(confabPick[id]);
-            if (!sid) {
-                setFeedback({ type: 'error', text: 'Choose a specific confab room before approving.' });
-                return;
-            }
-        }
-        setActionId(id);
-        const payload = {};
-        if (needsConfabAssign(r)) {
-            payload.assigned_space_id = Number(confabPick[id]);
-        }
-        api.post(`/admin/reservations/${id}/override`, payload)
-            .then(({ data }) => {
-                setActionId(null);
-                setConfabPick((p) => {
-                    const next = { ...p };
-                    delete next[id];
-                    return next;
-                });
-                setFeedback({ type: 'success', text: data?.message || 'Override applied.' });
-                load();
-            })
-            .catch((err) => {
-                setActionId(null);
-                const msg = err.response?.data?.errors?.assigned_space_id?.[0]
-                    || err.response?.data?.message
-                    || 'Failed to apply override.';
-                setFeedback({ type: 'error', text: msg });
-            });
-    };
-
     return (
         <div className="min-w-0 max-w-full">
             <h1 className={`${ui.pageTitle} mb-4`}>Reservation queue</h1>
+            {queueViewOnly && (
+                <div
+                    className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950"
+                    role="status"
+                >
+                    <span className="font-semibold">Student Assistant – View only.</span> You can review requests; approving,
+                    rejecting, cancelling, and overrides require a librarian or admin.
+                </div>
+            )}
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 <label htmlFor="admin-res-queue-filter" className="text-sm font-medium text-slate-700 shrink-0">Filter</label>
                 <select
@@ -182,6 +265,8 @@ export default function AdminReservations() {
                     <option value="pending_dean_approval">Pending dean/office approval</option>
                     <option value="pending_approval">Pending approval</option>
                     <option value="approved">Approved</option>
+                    <option value="overridden">Approved (admin override)</option>
+                    <option value="reschedule_required">Reschedule required</option>
                     <option value="rejected">Rejected</option>
                     <option value="cancelled">Cancelled</option>
                 </select>
@@ -247,14 +332,17 @@ export default function AdminReservations() {
                                         General confab request: assign a specific free confab room before approving.
                                     </p>
                                 )}
-                                {r.status === 'email_verification_pending' && (
+                                {r.status === 'email_verification_pending' && (canApprove || canReject) && (
                                     <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
                                         Awaiting requester email confirmation. <strong>Approve</strong> is available after they verify; <strong>Reject</strong> can decline before then.
                                     </p>
                                 )}
                                 {r.status === 'pending_dean_approval' && (
                                     <p className="text-xs text-violet-900 bg-violet-50 border border-violet-200 rounded px-2 py-1.5 mt-2 max-w-xl">
-                                        Awaiting dean/office decision via email. Library <strong>approve</strong>, <strong>reject</strong>, and <strong>override</strong> are disabled until then.
+                                        Awaiting dean/office decision via email. Library <strong>approve</strong> and <strong>reject</strong> stay disabled until then.
+                                        {isSystemAdmin ? (
+                                            <> A <strong>system administrator</strong> may still run a global override if needed.</>
+                                        ) : null}
                                     </p>
                                 )}
                                 {r.rejected_reason && (
@@ -300,11 +388,11 @@ export default function AdminReservations() {
                                             Reject
                                         </button>
                                     )}
-                                    {r.status === 'pending_approval' && canOverride && (
+                                    {canGlobalOverride(r) && (
                                         <button
                                             type="button"
-                                            onClick={() => overrideApprove(r)}
-                                            disabled={actionId === r.id || (needsConfabAssign(r) && !confabPick[r.id])}
+                                            onClick={() => openGlobalOverrideModal(r)}
+                                            disabled={actionId === r.id}
                                             className="min-h-[44px] touch-manipulation px-4 py-2 rounded-md border border-xu-secondary text-xu-secondary bg-white text-sm font-medium hover:bg-xu-page disabled:opacity-50 transition-colors md:min-h-0 md:px-3 md:py-1.5"
                                         >
                                             Override approve
@@ -321,7 +409,7 @@ export default function AdminReservations() {
                                         </button>
                                     )}
                                 </div>
-                                {needsConfabAssign(r) && (canApprove || canOverride) && (
+                                {needsConfabAssign(r) && canApprove && (
                                     <div className="flex w-full min-w-0 flex-col gap-2 sm:max-w-xs md:items-end">
                                         <label className="text-xs font-medium text-slate-600" htmlFor={`admin-res-confab-${r.id}`}>Confab room</label>
                                         <select
@@ -379,6 +467,113 @@ export default function AdminReservations() {
                     </div>
                 ))}
             </div>
+
+            {overrideModal && (
+                <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-3 sm:p-6">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/50"
+                        aria-label="Close override dialog"
+                        onClick={() => !actionId && setOverrideModal(null)}
+                    />
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="global-override-title"
+                        className="relative z-[1] w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-xl max-h-[min(90vh,40rem)] overflow-y-auto"
+                    >
+                        <h2 id="global-override-title" className="text-lg font-semibold text-xu-primary mb-1">
+                            Global override approve
+                        </h2>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Reassign this booking to any active space and time. A reason is required. Conflicting bookings may be
+                            marked <em>Reschedule required</em> when allowed by priority rules.
+                        </p>
+                        {spacesError && (
+                            <p className="text-sm text-red-700 mb-3">Could not load spaces. Refresh and try again.</p>
+                        )}
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-700 mb-1" htmlFor="global-override-space">
+                                    Library space
+                                </label>
+                                <select
+                                    id="global-override-space"
+                                    value={overrideForm.space_id}
+                                    onChange={(e) => setOverrideForm((f) => ({ ...f, space_id: e.target.value }))}
+                                    className={`${ui.select} w-full text-sm`}
+                                >
+                                    <option value="">Select space…</option>
+                                    {spacesList
+                                        .filter((s) => !s.is_confab_pool)
+                                        .map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.name}
+                                            </option>
+                                        ))}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1" htmlFor="global-override-start">
+                                        Start
+                                    </label>
+                                    <input
+                                        id="global-override-start"
+                                        type="datetime-local"
+                                        value={overrideForm.start_at}
+                                        onChange={(e) => setOverrideForm((f) => ({ ...f, start_at: e.target.value }))}
+                                        className={`${ui.input} text-sm w-full`}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1" htmlFor="global-override-end">
+                                        End
+                                    </label>
+                                    <input
+                                        id="global-override-end"
+                                        type="datetime-local"
+                                        value={overrideForm.end_at}
+                                        onChange={(e) => setOverrideForm((f) => ({ ...f, end_at: e.target.value }))}
+                                        className={`${ui.input} text-sm w-full`}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-700 mb-1" htmlFor="global-override-reason">
+                                    Override reason (required)
+                                </label>
+                                <textarea
+                                    id="global-override-reason"
+                                    value={overrideForm.reason}
+                                    onChange={(e) => setOverrideForm((f) => ({ ...f, reason: e.target.value }))}
+                                    rows={4}
+                                    className={`${ui.input} text-sm w-full`}
+                                    placeholder="Explain why this override is necessary…"
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-5 flex flex-wrap gap-2 justify-end">
+                            <button
+                                type="button"
+                                className="px-4 py-2 rounded-md border border-slate-300 text-slate-800 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                                disabled={Boolean(actionId)}
+                                onClick={() => setOverrideModal(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="px-4 py-2 rounded-md bg-xu-primary text-white text-sm font-medium hover:bg-xu-secondary disabled:opacity-50"
+                                disabled={Boolean(actionId)}
+                                onClick={submitGlobalOverride}
+                            >
+                                {actionId ? 'Applying…' : 'Apply override'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

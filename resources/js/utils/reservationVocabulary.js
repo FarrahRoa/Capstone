@@ -15,6 +15,14 @@ export const reservationStatusMeta = {
         label: 'Approved',
         badgeClass: 'bg-xu-secondary/10 text-xu-secondary border border-xu-secondary/25',
     },
+    overridden: {
+        label: 'Approved (admin override)',
+        badgeClass: 'bg-teal-50 text-teal-900 border border-teal-200',
+    },
+    reschedule_required: {
+        label: 'Reschedule required',
+        badgeClass: 'bg-orange-50 text-orange-950 border border-orange-200',
+    },
     rejected: {
         label: 'Rejected',
         badgeClass: 'bg-red-50 text-red-800 border border-red-200',
@@ -32,6 +40,7 @@ export const reservationActionLabels = {
     reject: 'Rejected',
     cancel: 'Cancelled',
     override: 'Override approved',
+    displaced: 'Displaced by admin override',
 };
 
 export function getReservationStatusLabel(status) {

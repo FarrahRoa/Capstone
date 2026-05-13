@@ -66,7 +66,8 @@ return [
     |
     */
 
-    'idle_timeout_minutes' => (int) env('SANCTUM_IDLE_TIMEOUT_MINUTES', 60 * 24 * 14), // 14 days
+    // Applied only after profile onboarding is complete (see EnsureSanctumTokenIsFresh).
+    'idle_timeout_minutes' => (int) env('SANCTUM_IDLE_TIMEOUT_MINUTES', 15),
 
     'idle_timeout_admin_minutes' => (int) env('SANCTUM_ADMIN_IDLE_TIMEOUT_MINUTES', 60 * 8), // 8 hours
 

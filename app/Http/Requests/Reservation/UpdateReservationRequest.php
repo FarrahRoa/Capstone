@@ -151,6 +151,7 @@ class UpdateReservationRequest extends FormRequest
                 Reservation::STATUS_PENDING_DEAN_APPROVAL,
                 Reservation::STATUS_PENDING_APPROVAL,
                 Reservation::STATUS_APPROVED,
+                Reservation::STATUS_OVERRIDDEN,
             ], true)) {
                 return;
             }

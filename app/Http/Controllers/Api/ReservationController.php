@@ -79,7 +79,10 @@ class ReservationController extends Controller
 
     public function show(Request $request, Reservation $reservation): JsonResponse
     {
-        if ((int) $reservation->user_id !== (int) $request->user()->id) {
+        $actor = $request->user();
+        $actor->loadMissing('role');
+        $isOwner = (int) $reservation->user_id === (int) $actor->id;
+        if (! $isOwner && ! $actor->canDo('reservation.view_all')) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
         $reservation->load(['space', 'user', 'approver', 'logs.actor']);
@@ -185,6 +188,7 @@ class ReservationController extends Controller
             Reservation::STATUS_PENDING_DEAN_APPROVAL,
             Reservation::STATUS_PENDING_APPROVAL,
             Reservation::STATUS_APPROVED,
+            Reservation::STATUS_OVERRIDDEN,
         ];
         if (! in_array($reservation->status, $editableStatuses, true)) {
             return response()->json(['message' => 'Reservation cannot be edited in its current status.'], 422);
@@ -202,6 +206,7 @@ class ReservationController extends Controller
         $nextStatus = match ($reservation->status) {
             Reservation::STATUS_EMAIL_VERIFICATION_PENDING => Reservation::STATUS_EMAIL_VERIFICATION_PENDING,
             Reservation::STATUS_PENDING_DEAN_APPROVAL => Reservation::STATUS_PENDING_DEAN_APPROVAL,
+            Reservation::STATUS_OVERRIDDEN => Reservation::STATUS_PENDING_APPROVAL,
             default => Reservation::STATUS_PENDING_APPROVAL,
         };
 

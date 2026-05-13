@@ -108,13 +108,13 @@ class ReportController extends Controller
             ->where(function ($q) use ($from, $to) {
                 $q->whereBetween('start_at', [$from, $to])
                     ->orWhere(function ($q2) use ($from, $to) {
-                        $q2->where('status', Reservation::STATUS_APPROVED)
+                        $q2->whereIn('status', Reservation::calendarCommittedStatuses())
                             ->whereNotNull('approved_at')
                             ->whereBetween('approved_at', [$from, $to]);
                     });
             })
             ->get();
-        $approved = $reservations->where('status', Reservation::STATUS_APPROVED);
+        $approved = $reservations->whereIn('status', Reservation::calendarCommittedStatuses());
 
         $statusTotals = collect(Reservation::statusLabels())->map(
             fn ($label, $status) => ['status' => $status, 'label' => $label, 'count' => $reservations->where('status', $status)->count()]

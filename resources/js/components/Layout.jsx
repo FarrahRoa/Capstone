@@ -91,8 +91,8 @@ export default function Layout({ children }) {
     const closeMobileNav = () => setNavOpen(false);
 
     const isAdminRoute = location.pathname.startsWith('/admin');
-    const isAdminPortalAccount = ['admin', 'librarian', 'student_assistant'].includes((user?.role?.slug || '').toLowerCase());
-    const forceHamburgerNav = isAdminRoute || isAdminPortalAccount;
+    const isQueueViewOnly = canViewReservationQueue && !hasPermission('reservation.approve');
+    const forceHamburgerNav = isAdminRoute;
 
     const hasPrimaryNav =
         canViewCalendar ||
@@ -255,6 +255,11 @@ export default function Layout({ children }) {
                                     >
                                         <span className="block truncate font-medium text-white">{user?.name}</span>
                                         <span className="block truncate text-white/80 text-xs">{user?.role?.name}</span>
+                                        {isQueueViewOnly && (
+                                            <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-wide text-white/90">
+                                                Queue access – Approve/reject disabled
+                                            </span>
+                                        )}
                                     </span>
                                     <svg viewBox="0 0 20 20" className="hidden h-4 w-4 shrink-0 text-white/80 sm:block" fill="currentColor" aria-hidden="true">
                                         <path d="M5.25 7.5 10 12.25 14.75 7.5l1.5 1.5-6.25 6.25L3.75 9l1.5-1.5Z" />

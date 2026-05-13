@@ -26,6 +26,7 @@ Route::middleware(['auth:sanctum', 'token.fresh'])->group(function () {
 
     Route::get('/me', [App\Http\Controllers\Api\AuthController::class, 'me']);
     Route::get('/dashboard/summary', App\Http\Controllers\Api\DashboardSummaryController::class);
+    Route::get('/me/notifications', [App\Http\Controllers\Api\NotificationController::class, 'index']);
     Route::post('/me/profile', [App\Http\Controllers\Api\AuthController::class, 'completeProfile']);
     Route::patch('/me/account', [App\Http\Controllers\Api\AuthController::class, 'updateAccount']);
     Route::post('/logout', [App\Http\Controllers\Api\AuthController::class, 'logout']);

@@ -68,8 +68,10 @@ class ReservationCreatePermissionTest extends TestCase
         Mail::assertSent(ReservationVerificationMail::class);
     }
 
-    public function test_student_assistant_cannot_create_reservation(): void
+    public function test_student_assistant_can_create_reservation(): void
     {
+        Mail::fake();
+
         $assistant = $this->makeUserWithRole('student_assistant', 'Student Assistant');
         Sanctum::actingAs($assistant);
         $space = $this->makeSpace();
@@ -81,6 +83,7 @@ class ReservationCreatePermissionTest extends TestCase
             'purpose' => 'Assist work',
         ], $this->organizationEventAudiencePayload()));
 
-        $response->assertStatus(403);
+        $response->assertStatus(201);
+        Mail::assertSent(ReservationVerificationMail::class);
     }
 }

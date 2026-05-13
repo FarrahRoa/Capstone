@@ -81,12 +81,16 @@ export default function HomeDashboard() {
     const canReserve = hasPermission('reservation.create');
     const canMyRes = hasPermission('reservation.view_own');
     const canQueue = hasPermission('reservation.view_all');
+    const canApproveQueue = hasPermission('reservation.approve');
     const canReports = hasPermission('reports.view');
     const canSpaces = hasPermission('spaces.manage');
     const canUsers = hasPermission('users.manage');
     const canPolicies = hasPermission('policies.manage');
 
-    const isAdminContext = canQueue || canReports || canSpaces || canUsers || canPolicies;
+    const hasNormalUserReservationAccess = canCalendar && canReserve && canMyRes;
+    const hasAnyElevatedAdminTool = canQueue || canReports || canSpaces || canUsers || canPolicies;
+    /** Librarian-style accounts without student/faculty booking permissions still get an admin-first dashboard. */
+    const isStaffOnlyAdminDashboard = hasAnyElevatedAdminTool && !hasNormalUserReservationAccess;
 
     const needsSummaryStats = canMyRes || canQueue || canSpaces || canUsers;
 
@@ -147,7 +151,7 @@ export default function HomeDashboard() {
         };
     }, [user, needsSummaryStats, canMyRes, canQueue, canSpaces, canUsers]);
 
-    /** Non-admin and hybrid shortcuts (includes My reservations). */
+    /** User + additive admin shortcuts (never hide personal booking links because of queue access). */
     const actionItems = useMemo(() => {
         const items = [];
         if (canMyRes) {
@@ -161,7 +165,9 @@ export default function HomeDashboard() {
             items.push({
                 to: '/admin/reservations',
                 title: 'Reservation queue',
-                description: 'Review and approve requests.',
+                description: canApproveQueue
+                    ? 'Review and approve requests.'
+                    : 'Monitor pending requests and confirmations (read-only).',
             });
         }
         if (canReports) {
@@ -193,56 +199,11 @@ export default function HomeDashboard() {
             });
         }
         return items;
-    }, [canMyRes, canQueue, canReports, canSpaces, canUsers, canPolicies]);
+    }, [canMyRes, canQueue, canApproveQueue, canReports, canSpaces, canUsers, canPolicies]);
 
-    /**
-     * Admin dashboard shortcuts: fixed priority order, no My reservations (nav still has it).
-     */
-    const adminShortcutItems = useMemo(() => {
-        const items = [];
-        if (canQueue) {
-            items.push({
-                to: '/admin/reservations',
-                title: 'Reservation queue',
-                description: 'Review and approve requests.',
-            });
-        }
-        if (canReports) {
-            items.push({
-                to: '/admin/reports',
-                title: 'Reports',
-                description: 'Usage summaries and export.',
-            });
-        }
-        if (canSpaces) {
-            items.push({
-                to: '/admin/spaces',
-                title: 'Spaces',
-                description: 'Manage rooms and availability.',
-            });
-        }
-        if (canUsers) {
-            items.push({
-                to: '/admin/users',
-                title: 'User management',
-                description: 'Roles and room eligibility.',
-            });
-        }
-        if (canPolicies) {
-            items.push({
-                to: '/admin/policies',
-                title: 'Guidelines',
-                description: 'Edit reservation policy text.',
-            });
-        }
-        return items;
-    }, [canQueue, canReports, canSpaces, canUsers, canPolicies]);
+    const shortcutItems = actionItems;
 
-    const shortcutItems = isAdminContext ? adminShortcutItems : actionItems;
-
-    const hasAdminSummaryStats = isAdminContext && (canQueue || canSpaces || canUsers);
-    const hasUserSummaryStats = !isAdminContext && (canMyRes || canQueue || canSpaces || canUsers);
-    const hasSummaryStats = hasAdminSummaryStats || hasUserSummaryStats;
+    const hasSummaryStats = needsSummaryStats;
 
     const welcomeLeadNonAdmin = canCalendar
         ? 'Pick a date and room below to see availability and start a reservation.'
@@ -254,9 +215,11 @@ export default function HomeDashboard() {
                 <div className="mb-5">
                     <h2 className={`${ui.sectionLabel} mb-1`}>At a glance</h2>
                     <p className="text-sm text-slate-600">
-                        {isAdminContext
+                        {isStaffOnlyAdminDashboard
                             ? 'Key volumes for monitoring reservations, spaces, and accounts.'
-                            : 'A quick snapshot of your library activity.'}
+                            : canQueue || canSpaces || canUsers
+                              ? 'A quick snapshot of your activity and library-wide volumes you can view.'
+                              : 'A quick snapshot of your library activity.'}
                     </p>
                 </div>
                 {statsError && (
@@ -265,32 +228,16 @@ export default function HomeDashboard() {
                     </p>
                 )}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-5">
-                    {isAdminContext && canQueue && (
-                        <>
-                            <SummaryMetricCard
-                                label="All reservations"
-                                value={stats.reservationsTotal}
-                                loading={loading}
-                                iconLetter="AR"
-                                accentClass={ACCENT.total}
-                            />
-                            <SummaryMetricCard
-                                label="Pending approval"
-                                value={stats.pendingApproval}
-                                loading={loading}
-                                iconLetter="PA"
-                                accentClass={ACCENT.pending}
-                            />
-                            <SummaryMetricCard
-                                label="Awaiting email confirm"
-                                value={stats.pendingEmail}
-                                loading={loading}
-                                iconLetter="EV"
-                                accentClass={ACCENT.email}
-                            />
-                        </>
+                    {canMyRes && (
+                        <SummaryMetricCard
+                            label="My reservations"
+                            value={stats.myReservations}
+                            loading={loading}
+                            iconLetter="MR"
+                            accentClass={ACCENT.mine}
+                        />
                     )}
-                    {!isAdminContext && canQueue && (
+                    {canQueue && (
                         <>
                             <SummaryMetricCard
                                 label="Pending approval"
@@ -333,24 +280,15 @@ export default function HomeDashboard() {
                             accentClass={ACCENT.users}
                         />
                     )}
-                    {!isAdminContext && canMyRes && (
-                        <SummaryMetricCard
-                            label="My reservations"
-                            value={stats.myReservations}
-                            loading={loading}
-                            iconLetter="MR"
-                            accentClass={ACCENT.mine}
-                        />
-                    )}
                 </div>
             </section>
         );
 
     const shortcutsSection = (
         <section className="rounded-xl border border-dashed border-slate-200/90 bg-white/80 p-5 sm:p-6 shadow-sm">
-            <h2 className={`${ui.sectionLabel} mb-1`}>{isAdminContext ? 'Admin shortcuts' : 'Shortcuts'}</h2>
+            <h2 className={`${ui.sectionLabel} mb-1`}>Shortcuts</h2>
             <p className="text-sm text-slate-600 mb-4">
-                {isAdminContext ? 'Jump to primary admin tools.' : 'Quick links for your account.'}
+                Quick links for booking and for admin tools your account can access.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                 {shortcutItems.map((item) => (
@@ -368,11 +306,11 @@ export default function HomeDashboard() {
             {/* 1. Page header / welcome */}
             <header className="space-y-2">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    {isAdminContext ? 'Admin / Dashboard' : 'Home / Dashboard'}
+                    {isStaffOnlyAdminDashboard ? 'Admin / Dashboard' : 'Home / Dashboard'}
                 </p>
                 <h1 className={ui.pageTitle}>Dashboard</h1>
                 <p className="text-lg text-slate-800 font-medium">Hi {user?.name || 'user'}!</p>
-                {isAdminContext ? (
+                {isStaffOnlyAdminDashboard ? (
                     <p className="text-slate-600 text-sm sm:text-base max-w-3xl leading-relaxed">
                         This is your <span className="font-medium text-slate-800">admin control center</span> for the XU
                         Library reservation system—monitor reservations, spaces, people, and activity, then open tools
@@ -405,7 +343,6 @@ export default function HomeDashboard() {
                     <HomeDashboardDeferredSections
                         user={user}
                         hasPermission={hasPermission}
-                        isAdminContext={isAdminContext}
                         canCalendar={canCalendar}
                         canReserve={canReserve}
                         canQueue={canQueue}
