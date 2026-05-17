@@ -6,7 +6,6 @@ import { isAdminScheduleViewer } from '../../utils/isAdminScheduleViewer';
 import { userFacingSpaceName, dedupeConfabFamilyForLegend } from '../../utils/userFacingSpaceName';
 import { getSpaceIneligibilityMessage, getSpaceRestrictionLabel, isUserEligibleForSpace } from '../../utils/spaceEligibility';
 import {
-    buildManilaHalfHourSlots,
     buildManilaMonthCells,
     formatManilaHalfHourSlotLabel,
     formatManilaSlotGutterTimes,
@@ -26,19 +25,21 @@ import { useBookingPolicyClock } from '../../utils/useBookingPolicyClock';
 import AvailableBookingSlotCard from './AvailableBookingSlotCard';
 import { unwrapData } from '../../utils/apiEnvelope';
 import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
+import { cutoffBlackoutMessage } from '../../utils/bookingSlotCutoff';
 import {
+    buildSlotsForOperatingDay,
+    coerceScheduleSlotList,
+    mapApiTimeSlotsToClientSlots,
     isCalendarViewMonthAtOrBeyondMax,
     isYmdAfterMaxBooking,
     normalizeOperatingHoursPayload,
+    resolveOperatingWindowForYmd,
 } from '../../utils/operatingHours';
 import { colorForOperationalSpaceId, colorForSpaceId } from '../../utils/spaceColors';
 import { getReservationStatusLabel } from '../../utils/reservationVocabulary';
 import SpaceShowcaseCarousel from './SpaceShowcaseCarousel';
 import UserDashboardSlotsPanel from './UserDashboardSlotsPanel';
 import StatusIndicator from './StatusIndicator';
-
-const DAY_START_HOUR = 9;
-const DAY_END_HOUR = 18;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -86,10 +87,33 @@ function extractFloorFromGuidelineDetails(space) {
     return any ? String(any[0]).trim() : '';
 }
 
-function reservationForSlot(slot, reservedSlots) {
+function reservationForSlot(slot, reservedSlots, dateYmd) {
     const list = Array.isArray(reservedSlots) ? reservedSlots : [];
-    const slotStart = new Date(slot.start_at).getTime();
-    const slotEnd = new Date(slot.end_at).getTime();
+    if (!slot) return null;
+
+    let slotStart;
+    let slotEnd;
+    if (slot.start_at && slot.end_at) {
+        slotStart = new Date(slot.start_at).getTime();
+        slotEnd = new Date(slot.end_at).getTime();
+    } else if (
+        dateYmd &&
+        Number.isFinite(slot.hourStart) &&
+        Number.isFinite(slot.minuteStart) &&
+        Number.isFinite(slot.hourEnd) &&
+        Number.isFinite(slot.minuteEnd)
+    ) {
+        const pad = (n) => String(n).padStart(2, '0');
+        slotStart = Date.parse(`${dateYmd}T${pad(slot.hourStart)}:${pad(slot.minuteStart)}:00+08:00`);
+        slotEnd = Date.parse(`${dateYmd}T${pad(slot.hourEnd)}:${pad(slot.minuteEnd)}:00+08:00`);
+    } else {
+        return null;
+    }
+
+    if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) {
+        return null;
+    }
+
     for (const r of list) {
         const rs = new Date(r.start_at).getTime();
         const re = new Date(r.end_at).getTime();
@@ -216,6 +240,8 @@ export default function BookingCalendar({
     const { selectedYmd, viewYear, viewMonth } = cal;
     const [selectedSpaceId, setSelectedSpaceId] = useState('');
     const calendarClock = useBookingPolicyClock();
+    const [operatingHoursConfig, setOperatingHoursConfig] = useState(() => normalizeOperatingHoursPayload(null));
+    const [operatingHoursLoaded, setOperatingHoursLoaded] = useState(false);
 
     const cells = useMemo(() => buildManilaMonthCells(viewYear, viewMonth), [viewYear, viewMonth]);
 
@@ -250,8 +276,13 @@ export default function BookingCalendar({
 
     const leadPolicyReasonForSelectedDay = useMemo(() => {
         if (reservationLeadTimeExempt || !selectedYmd) return null;
-        return policyBlockReasonForManilaReservationDay(selectedYmd, calendarClock);
-    }, [reservationLeadTimeExempt, selectedYmd, calendarClock]);
+        return policyBlockReasonForManilaReservationDay(selectedYmd, calendarClock, operatingHoursConfig);
+    }, [reservationLeadTimeExempt, selectedYmd, calendarClock, operatingHoursConfig]);
+
+    const bookingCutoffBannerMessage = useMemo(
+        () => (operatingHoursLoaded ? cutoffBlackoutMessage(operatingHoursConfig) : ''),
+        [operatingHoursLoaded, operatingHoursConfig]
+    );
 
     /** Policy note for sidebar + aggregated schedule (shown for every viewer except exempt admin). */
     const activeLeadPolicyBlockMessage = leadPolicyReasonForSelectedDay || '';
@@ -261,6 +292,7 @@ export default function BookingCalendar({
 
     const [reservedSlots, setReservedSlots] = useState([]);
     const [publicScheduleRows, setPublicScheduleRows] = useState([]);
+    const [apiDayTimeSlots, setApiDayTimeSlots] = useState([]);
     const [loadingSlots, setLoadingSlots] = useState(() => Boolean(readOnly));
     const [loginRequiredNudge, setLoginRequiredNudge] = useState('');
     const [fullyBookedYmd, setFullyBookedYmd] = useState({});
@@ -307,12 +339,15 @@ export default function BookingCalendar({
                 const payload = unwrapData(data);
                 setHolidays(Array.isArray(payload?.holidays) ? payload.holidays : []);
                 const hours = normalizeOperatingHoursPayload(payload?.hours);
+                setOperatingHoursConfig(hours);
                 setMaxBookingDate(hours.max_booking_date);
             })
             .catch(() => {
                 setHolidays([]);
                 setMaxBookingDate(null);
-            });
+                setOperatingHoursConfig(normalizeOperatingHoursPayload(null));
+            })
+            .finally(() => setOperatingHoursLoaded(true));
     }, []);
 
     const nextMonthDisabled = useMemo(
@@ -390,9 +425,13 @@ export default function BookingCalendar({
                     if (cancelled) return;
                     const payload = unwrapData(data);
                     setPublicScheduleRows(Array.isArray(payload?.spaces) ? payload.spaces : []);
+                    setApiDayTimeSlots(Array.isArray(payload?.time_slots) ? payload.time_slots : []);
                 })
                 .catch(() => {
-                    if (!cancelled) setPublicScheduleRows([]);
+                    if (!cancelled) {
+                        setPublicScheduleRows([]);
+                        setApiDayTimeSlots([]);
+                    }
                 })
                 .finally(() => {
                     if (!cancelled) setLoadingSlots(false);
@@ -427,12 +466,26 @@ export default function BookingCalendar({
     const restrictionLabel = selectedSpace ? getSpaceRestrictionLabel(selectedSpace) : '';
     const selectedIsConfabPool = Boolean(selectedSpace?.type === 'confab' && selectedSpace?.is_confab_pool);
 
-    const slots = useMemo(
-        () => buildManilaHalfHourSlots(selectedYmd, reservedSlots, DAY_START_HOUR, DAY_END_HOUR),
-        [selectedYmd, reservedSlots]
+    const selectedDayOperatingWindow = useMemo(
+        () => resolveOperatingWindowForYmd(operatingHoursConfig, selectedYmd),
+        [operatingHoursConfig, selectedYmd]
     );
+
+    const slots = useMemo(() => {
+        if (!operatingHoursLoaded || !selectedYmd) return [];
+        try {
+            return coerceScheduleSlotList(
+                buildSlotsForOperatingDay(operatingHoursConfig, selectedYmd, reservedSlots)
+            );
+        } catch {
+            return [];
+        }
+    }, [operatingHoursLoaded, operatingHoursConfig, selectedYmd, reservedSlots]);
     const visibleSlots = useMemo(
-        () => slots.filter((slot) => !shouldHidePastSlotOnSelectedManilaDay(selectedYmd, slot, calendarClock)),
+        () =>
+            coerceScheduleSlotList(slots).filter(
+                (slot) => !shouldHidePastSlotOnSelectedManilaDay(selectedYmd, slot, calendarClock)
+            ),
         [slots, selectedYmd, calendarClock]
     );
 
@@ -519,18 +572,37 @@ export default function BookingCalendar({
     }, [readOnly, selectedSpaceId, publicScheduleRows]);
 
     const publicReadOnlySlots = useMemo(() => {
-        if (!readOnly || !selectedYmd || !selectedSpaceId) return [];
-        return buildManilaHalfHourSlots(
-            selectedYmd,
-            publicReadOnlyReservedSlots,
-            DAY_START_HOUR,
-            DAY_END_HOUR
-        );
-    }, [readOnly, selectedYmd, selectedSpaceId, publicReadOnlyReservedSlots]);
+        if (!readOnly || !operatingHoursLoaded || !selectedYmd || !selectedSpaceId) return [];
+        try {
+            const fromApi = mapApiTimeSlotsToClientSlots(
+                apiDayTimeSlots,
+                selectedYmd,
+                publicReadOnlyReservedSlots
+            );
+            if (fromApi?.length) {
+                return coerceScheduleSlotList(fromApi);
+            }
+            return coerceScheduleSlotList(
+                buildSlotsForOperatingDay(operatingHoursConfig, selectedYmd, publicReadOnlyReservedSlots)
+            );
+        } catch {
+            return [];
+        }
+    }, [
+        readOnly,
+        operatingHoursLoaded,
+        operatingHoursConfig,
+        selectedYmd,
+        selectedSpaceId,
+        publicReadOnlyReservedSlots,
+        apiDayTimeSlots,
+    ]);
+
+    const scheduleGridLoading = !operatingHoursLoaded || loadingSlots;
 
     const visiblePublicReadOnlySlots = useMemo(
         () =>
-            publicReadOnlySlots.filter(
+            coerceScheduleSlotList(publicReadOnlySlots).filter(
                 (slot) => !shouldHidePastSlotOnSelectedManilaDay(selectedYmd, slot, calendarClock)
             ),
         [publicReadOnlySlots, selectedYmd, calendarClock]
@@ -723,6 +795,11 @@ export default function BookingCalendar({
                                 )}
                                 <span className="font-medium text-xu-primary">{BOOKING_TIMEZONE}</span>.
                             </p>
+                            {operatingHoursLoaded && bookingCutoffBannerMessage ? (
+                                <p className="mt-2 rounded-lg border border-amber-200/90 bg-amber-50 px-3 py-2 text-xs font-medium leading-snug text-amber-950">
+                                    {bookingCutoffBannerMessage}
+                                </p>
+                            ) : null}
                             {readOnly && (
                                 <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-xu-secondary/25 bg-xu-primary/[0.06] px-3 py-2 text-xs font-semibold text-xu-primary">
                                     Viewing only. Log in to reserve a space.
@@ -1082,6 +1159,13 @@ export default function BookingCalendar({
                                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
                                     <span>
                                         <span className="font-medium text-xu-primary">Slots:</span> half-hour grid (:00 / :30)
+                                        {operatingHoursLoaded && (
+                                            <>
+                                                {' '}
+                                                · {selectedDayOperatingWindow.start}–{selectedDayOperatingWindow.end}{' '}
+                                                {BOOKING_TIMEZONE}
+                                            </>
+                                        )}
                                     </span>
                                     {readOnly ? (
                                         <span>
@@ -1112,13 +1196,13 @@ export default function BookingCalendar({
                                 </div>
                             )}
 
-                            {readOnly && loadingSlots && (
+                            {readOnly && scheduleGridLoading && (
                                 <div className="flex flex-1 items-center justify-center py-16">
                                     <p className="text-sm font-medium text-slate-500">Loading schedule…</p>
                                 </div>
                             )}
 
-                            {readOnly && !loadingSlots && selectedSpaceId && publicScheduleRows.length === 0 && (
+                            {readOnly && !scheduleGridLoading && selectedSpaceId && publicScheduleRows.length === 0 && (
                                 <div className="flex flex-1 items-center justify-center px-6 py-12">
                                     <p className="max-w-sm text-center text-sm text-slate-500">
                                         No schedule data for this space and date. Refresh the page or try again later.
@@ -1126,21 +1210,50 @@ export default function BookingCalendar({
                                 </div>
                             )}
 
-                            {!readOnly && selectedSpaceId && loadingSlots && (
+                            {!readOnly && selectedSpaceId && scheduleGridLoading && (
                                 <div className="flex flex-1 items-center justify-center py-16">
                                     <p className="text-sm font-medium text-slate-500">Loading schedule…</p>
                                 </div>
                             )}
 
-                            {!readOnly && selectedSpaceId && !loadingSlots && !eligible && (
+                            {!readOnly && selectedSpaceId && !scheduleGridLoading && !eligible && (
                                 <div className="flex flex-1 items-center justify-center px-6 py-10">
                                     <p className="max-w-md text-center text-sm text-red-700">{getSpaceIneligibilityMessage(selectedSpace)}</p>
                                 </div>
                             )}
 
-                            {readOnly && !loadingSlots && selectedSpaceId && visiblePublicReadOnlySlots.length > 0 && (
+                            {readOnly &&
+                                !scheduleGridLoading &&
+                                selectedSpaceId &&
+                                visiblePublicReadOnlySlots.length === 0 &&
+                                publicScheduleRows.length > 0 && (
+                                    <div className="flex flex-1 items-center justify-center px-6 py-12">
+                                        <p className="max-w-sm text-center text-sm text-slate-500">
+                                            No bookable half-hour slots for this day&apos;s operating hours (
+                                            {selectedDayOperatingWindow.start}–{selectedDayOperatingWindow.end}).
+                                        </p>
+                                    </div>
+                                )}
+
+                            {readOnly &&
+                                !scheduleGridLoading &&
+                                selectedSpaceId &&
+                                (!visiblePublicReadOnlySlots || visiblePublicReadOnlySlots.length === 0) &&
+                                publicScheduleRows.length > 0 &&
+                                operatingHoursLoaded && (
+                                    <div className="flex flex-1 items-center justify-center px-6 py-12">
+                                        <p className="max-w-sm rounded-lg border border-dashed border-slate-300 px-4 py-3 text-center text-sm text-slate-500">
+                                            Schedule currently unavailable. Please contact administration.
+                                        </p>
+                                    </div>
+                                )}
+
+                            {readOnly && !scheduleGridLoading && selectedSpaceId && visiblePublicReadOnlySlots?.length > 0 && (
                                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                                    {visiblePublicReadOnlySlots.every((s) => !s.available) && (
+                                    {visiblePublicReadOnlySlots
+                                        .filter((s) => !s.bookingCutoffBlocked)
+                                        .every((s) => !s.available) &&
+                                        visiblePublicReadOnlySlots.some((s) => !s.bookingCutoffBlocked) && (
                                         <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 sm:mx-5">
                                             No open half-hour windows — this room is fully reserved for this date.
                                         </div>
@@ -1160,6 +1273,36 @@ export default function BookingCalendar({
                                                 );
                                                 const rowKey = `pub-${selectedSpaceId}-${selectedYmd}-${slot.hourStart}-${slot.minuteStart}`;
                                                 const gutter = formatManilaSlotGutterTimes(slot);
+
+                                                if (slot.bookingCutoffBlocked) {
+                                                    return (
+                                                        <li key={rowKey} className="list-none">
+                                                            <div className="grid grid-cols-[4.25rem_1fr] gap-0 sm:grid-cols-[5rem_1fr]">
+                                                                <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-slate-50 py-3 pr-2 pl-1 text-right">
+                                                                    <span className="text-xs font-bold tabular-nums text-slate-500">{gutter.start}</span>
+                                                                    <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
+                                                                </div>
+                                                                <div className="p-2 sm:p-2.5">
+                                                                    <div
+                                                                        title="Reservations cannot start at or after 4:30 PM"
+                                                                        aria-label={`${label} — not available for booking after 4:30 PM`}
+                                                                        className="flex min-h-[3rem] cursor-not-allowed items-center justify-between gap-2 rounded-lg border border-slate-300/90 bg-slate-100/90 px-3 py-2 shadow-inner"
+                                                                    >
+                                                                        <div className="min-w-0">
+                                                                            <p className="text-sm font-semibold text-slate-600">{label}</p>
+                                                                            <p className="text-xs font-medium text-slate-500">
+                                                                                Not available · after 4:30 PM cutoff
+                                                                            </p>
+                                                                        </div>
+                                                                        <span className="shrink-0 rounded-md border border-slate-400/60 bg-slate-200/80 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                                                            Closed
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    );
+                                                }
 
                                                 if (slot.available) {
                                                     if (false && schedulingRulesBlockBookings) {
@@ -1275,7 +1418,20 @@ export default function BookingCalendar({
                                 </div>
                             )}
 
-                            {!readOnly && selectedSpaceId && !loadingSlots && eligible && (
+                            {!readOnly &&
+                                selectedSpaceId &&
+                                !scheduleGridLoading &&
+                                eligible &&
+                                visibleSlots.length === 0 && (
+                                    <div className="flex flex-1 items-center justify-center px-6 py-12">
+                                        <p className="max-w-sm text-center text-sm text-slate-500">
+                                            No bookable half-hour slots for this day&apos;s operating hours (
+                                            {selectedDayOperatingWindow.start}–{selectedDayOperatingWindow.end}).
+                                        </p>
+                                    </div>
+                                )}
+
+                            {!readOnly && selectedSpaceId && !scheduleGridLoading && eligible && visibleSlots.length > 0 && (
                                 <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-slate-200/80">
                                     {visibleSlots.every((s) => !s.available) && (
                                         <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 sm:mx-5">
@@ -1313,7 +1469,38 @@ export default function BookingCalendar({
                                                     )}&end_time=${manilaTimeParamFromHour(slot.hourEnd, slot.minuteEnd)}`;
                                                     const rowKey = `${selectedSpaceId}-${selectedYmd}-${slot.hourStart}-${slot.minuteStart}`;
                                                     const gutter = formatManilaSlotGutterTimes(slot);
-                                                    const r = slot.available ? null : reservationForSlot(slot, reservedSlots);
+                                                    const r = slot.available
+                                                        ? null
+                                                        : reservationForSlot(slot, reservedSlots, selectedYmd);
+
+                                                    if (slot.bookingCutoffBlocked) {
+                                                        return (
+                                                            <li key={rowKey} className="list-none">
+                                                                <div className="grid w-full grid-cols-[4.25rem_1fr] gap-0 text-left sm:grid-cols-[5rem_1fr]">
+                                                                    <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-slate-50 py-4 pr-2.5 pl-1.5 text-right">
+                                                                        <span className="text-xs font-bold tabular-nums text-slate-500">{gutter.start}</span>
+                                                                        <span className="text-xs tabular-nums text-slate-500">{gutter.end}</span>
+                                                                    </div>
+                                                                    <div className="p-3 sm:p-3.5">
+                                                                        <div
+                                                                            title="Reservations cannot start at or after 4:30 PM"
+                                                                            className="flex min-h-[3.5rem] cursor-not-allowed items-center justify-between gap-3 rounded-xl border border-slate-300/90 bg-slate-100/90 px-4 py-3 shadow-inner"
+                                                                        >
+                                                                            <div className="min-w-0">
+                                                                                <p className="text-sm font-semibold text-slate-600">{label}</p>
+                                                                                <p className="text-xs font-medium text-slate-500">
+                                                                                    Not available · after 4:30 PM cutoff
+                                                                                </p>
+                                                                            </div>
+                                                                            <span className="shrink-0 rounded-md border border-slate-400/60 bg-slate-200/80 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                                                                Closed
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </li>
+                                                        );
+                                                    }
 
                                                     if (!slot.available) {
                                                         return (

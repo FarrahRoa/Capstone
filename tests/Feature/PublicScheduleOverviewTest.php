@@ -57,8 +57,9 @@ class PublicScheduleOverviewTest extends TestCase
             'data' => [
                 'date',
                 'timezone',
-                'day_start_hour',
-                'day_end_hour',
+                'operating_hours' => ['day_start', 'day_end'],
+                'booking_cutoff',
+                'time_slots',
                 'spaces' => [
                     [
                         'space' => ['id', 'name', 'type', 'slug', 'is_confab_pool'],

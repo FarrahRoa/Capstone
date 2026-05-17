@@ -7,6 +7,7 @@ use App\Models\Space;
 use App\Models\User;
 use App\Models\Holiday;
 use App\Models\PolicyDocument;
+use App\Support\BookingSlotCutoff;
 use App\Support\ReservationDeanRouting;
 use App\Support\ReservationLeadTimePolicy;
 use Illuminate\Foundation\Http\FormRequest;
@@ -113,6 +114,12 @@ class StoreReservationRequest extends FormRequest
 
             if (PolicyDocument::reservationBeyondMaxBookingDate($start, $end, $tz)) {
                 $validator->errors()->add('start_at', PolicyDocument::maxBookingDateValidationMessage());
+
+                return;
+            }
+
+            if (BookingSlotCutoff::reservationStartAtOrAfterCutoff($start, $tz)) {
+                $validator->errors()->add('start_at', BookingSlotCutoff::validationMessage());
 
                 return;
             }

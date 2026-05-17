@@ -1,9 +1,15 @@
 import { joinHalfHourWallClockHhmm, splitHalfHourWallClockHhmm } from './halfHourWallClockInput';
-import { MANILA_OFFSET, manilaWeekdaySun0, manilaYmdFromInstant } from './manilaTime';
+import { BOOKING_CUTOFF_MINUTES } from './bookingSlotCutoff';
+import { buildManilaHalfHourSlotsForWindow, MANILA_OFFSET, manilaWeekdaySun0, manilaYmdFromInstant } from './manilaTime';
+
+/** Safe grid when API/client slot builders fail — never pass undefined into .map(). */
+export function coerceScheduleSlotList(slots) {
+    return Array.isArray(slots) ? slots : [];
+}
 
 export const DEFAULT_OPERATING_HOURS_SHAPE = {
-    day_start: '06:00',
-    day_end: '18:30',
+    day_start: '09:00',
+    day_end: '17:00',
     weekend_day_start: null,
     weekend_day_end: null,
     max_booking_date: null,
@@ -66,9 +72,58 @@ export function isCalendarViewMonthAtOrBeyondMax(viewYear, viewMonthIndex0, maxY
 
 /**
  * @param {{ day_start: string, day_end: string, weekend_day_start: string|null, weekend_day_end: string|null }} config
- * @param {string} ymd
- * @returns {{ start: string, end: string }}
+ * @param {string} dateYmd
+ * @param {{ start_at: string, end_at: string }[]} reserved
  */
+export function buildSlotsForOperatingDay(config, dateYmd, reserved) {
+    const { start, end } = resolveOperatingWindowForYmd(config, dateYmd);
+    return buildManilaHalfHourSlotsForWindow(dateYmd, reserved, start, end);
+}
+
+/**
+ * Map API `time_slots` payload to client grid rows (merges occupancy when provided).
+ * @param {unknown} apiSlots
+ * @param {{ start_at: string, end_at: string }[]} [reserved]
+ */
+export function mapApiTimeSlotsToClientSlots(apiSlots, dateYmd, reserved = []) {
+    if (!Array.isArray(apiSlots) || apiSlots.length === 0 || !dateYmd) {
+        return null;
+    }
+    const list = Array.isArray(reserved) ? reserved : [];
+    return apiSlots.map((row) => {
+        const hourStart = Number(row?.hour_start ?? 0);
+        const minuteStart = Number(row?.minute_start ?? 0);
+        const hourEnd = Number(row?.hour_end ?? hourStart);
+        const minuteEnd = Number(row?.minute_end ?? minuteStart + 30);
+        const bookingCutoffBlocked =
+            row?.status === 'unavailable_cutoff' || Boolean(row?.booking_cutoff_blocked);
+        let busy = row?.status === 'occupied';
+        if (!busy && list.length > 0) {
+            const startMs = Date.parse(
+                `${dateYmd}T${pad2(hourStart)}:${pad2(minuteStart)}:00${MANILA_OFFSET}`
+            );
+            const endMs = Date.parse(`${dateYmd}T${pad2(hourEnd)}:${pad2(minuteEnd)}:00${MANILA_OFFSET}`);
+            for (const r of list) {
+                const rs = new Date(r.start_at).getTime();
+                const re = new Date(r.end_at).getTime();
+                if (startMs < re && endMs > rs) {
+                    busy = true;
+                    break;
+                }
+            }
+        }
+        return {
+            hourStart,
+            minuteStart,
+            hourEnd,
+            minuteEnd,
+            available: Boolean(row?.is_available) && !busy && !bookingCutoffBlocked,
+            bookingCutoffBlocked,
+            status: row?.status ?? (bookingCutoffBlocked ? 'unavailable_cutoff' : busy ? 'occupied' : 'available'),
+        };
+    });
+}
+
 export function resolveOperatingWindowForYmd(config, ymd) {
     if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
         return { start: config.day_start, end: config.day_end };
@@ -106,9 +161,9 @@ export function halfHourMarkersInclusive(openHhmm, closeHhmm) {
     return out;
 }
 
-/** Start times: half-hour marks strictly before close. */
+/** Start times: half-hour marks strictly before close and before the 4:30 PM booking cutoff. */
 export function allowedStartHhmmList(openHhmm, closeHhmm) {
-    const closeM = hhmmToMinutes(closeHhmm);
+    const closeM = Math.min(hhmmToMinutes(closeHhmm), BOOKING_CUTOFF_MINUTES);
     return halfHourMarkersInclusive(openHhmm, closeHhmm).filter((t) => hhmmToMinutes(t) < closeM);
 }
 

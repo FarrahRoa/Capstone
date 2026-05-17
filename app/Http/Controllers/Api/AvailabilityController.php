@@ -3,22 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PolicyDocument;
 use App\Models\Reservation;
 use App\Models\Space;
 use App\Models\User;
+use App\Services\TimeSlotService;
 use App\Support\ApiResponse;
+use App\Support\BookingSlotCutoff;
+use App\Support\OperatingHalfHourSlotIterator;
 use App\Support\StudentSpaceAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class AvailabilityController extends Controller
 {
-    private const BOOKING_DAY_START_HOUR = 9;
-
-    private const BOOKING_DAY_END_HOUR = 18;
-
     public function index(Request $request): JsonResponse
     {
         $request->validate([
@@ -101,6 +102,19 @@ class AvailabilityController extends Controller
             'space_id' => 'nullable|exists:spaces,id',
         ]);
 
+        try {
+            return $this->buildPublicScheduleOverviewResponse($request);
+        } catch (\Throwable $e) {
+            Log::error('publicScheduleOverview failed: '.$e->getMessage(), [
+                'exception' => $e,
+            ]);
+
+            return response()->json(['error' => 'Failed to generate schedule grid'], 500);
+        }
+    }
+
+    private function buildPublicScheduleOverviewResponse(Request $request): JsonResponse
+    {
         $date = Carbon::parse($request->input('date'), config('app.timezone'))->startOfDay();
         $spaceId = $request->input('space_id');
 
@@ -156,11 +170,30 @@ class AvailabilityController extends Controller
             ];
         }
 
+        $operatingWindow = PolicyDocument::resolvedOperatingWindowForLocalDate($date);
+        $ymd = $date->format('Y-m-d');
+        try {
+            $timeSlots = TimeSlotService::buildSlotsForWindow(
+                $ymd,
+                $operatingWindow['start'],
+                $operatingWindow['end']
+            );
+        } catch (\Throwable) {
+            $timeSlots = TimeSlotService::buildSlotsForWindow($ymd, '09:00', '17:00');
+        }
+        if ($timeSlots === []) {
+            $timeSlots = TimeSlotService::buildSlotsForWindow($ymd, '09:00', '17:00');
+        }
+
         return ApiResponse::data([
-            'date' => $date->format('Y-m-d'),
+            'date' => $ymd,
             'timezone' => config('app.timezone'),
-            'day_start_hour' => self::BOOKING_DAY_START_HOUR,
-            'day_end_hour' => self::BOOKING_DAY_END_HOUR,
+            'operating_hours' => [
+                'day_start' => $operatingWindow['start'],
+                'day_end' => $operatingWindow['end'],
+            ],
+            'booking_cutoff' => BookingSlotCutoff::CUTOFF_HHMM,
+            'time_slots' => $timeSlots,
             'spaces' => $rows,
         ]);
     }
@@ -177,6 +210,19 @@ class AvailabilityController extends Controller
             'to' => 'required|date|after_or_equal:from',
         ]);
 
+        try {
+            return $this->buildPublicMonthSummaryResponse($request);
+        } catch (\Throwable $e) {
+            Log::error('publicMonthSummary failed: '.$e->getMessage(), [
+                'exception' => $e,
+            ]);
+
+            return response()->json(['error' => 'Failed to generate schedule summary'], 500);
+        }
+    }
+
+    private function buildPublicMonthSummaryResponse(Request $request): JsonResponse
+    {
         $space = Space::query()->where('id', $request->integer('space_id'))->where('is_active', true)->first();
         if (!$space) {
             return response()->json(['message' => 'Space not found.'], 404);
@@ -413,19 +459,27 @@ class AvailabilityController extends Controller
      */
     private function isDayFullyBookedForSpace(Carbon $dayStart, Collection $reservationsOnDay): bool
     {
-        for ($h = self::BOOKING_DAY_START_HOUR; $h < self::BOOKING_DAY_END_HOUR; $h++) {
-            foreach ([0, 30] as $minute) {
-                $slotStart = $dayStart->copy()->setTime($h, $minute, 0);
-                $slotEnd = $minute === 0
-                    ? $dayStart->copy()->setTime($h, 30, 0)
-                    : $dayStart->copy()->setTime($h + 1, 0, 0);
+        $window = PolicyDocument::resolvedOperatingWindowForLocalDate($dayStart);
+        $foundBookableWindow = false;
+        $allBookableSlotsTaken = true;
+
+        OperatingHalfHourSlotIterator::eachBoundedHalfHour(
+            $window['start'],
+            $window['end'],
+            function (int $startM) use ($dayStart, $reservationsOnDay, &$foundBookableWindow, &$allBookableSlotsTaken): void {
+                if (BookingSlotCutoff::slotStartMinutesAtOrAfterCutoff($startM)) {
+                    return;
+                }
+                $foundBookableWindow = true;
+                $slotStart = $dayStart->copy()->startOfDay()->addMinutes($startM);
+                $slotEnd = $slotStart->copy()->addMinutes(30);
                 if (! $this->halfHourRangeOverlapsReservation($slotStart, $slotEnd, $reservationsOnDay)) {
-                    return false;
+                    $allBookableSlotsTaken = false;
                 }
             }
-        }
+        );
 
-        return true;
+        return $foundBookableWindow && $allBookableSlotsTaken;
     }
 
     /**

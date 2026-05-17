@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import api from '../../api';
 import {
-    buildManilaHalfHourSlots,
     buildManilaMonthCells,
     buildManilaWeekStripContaining,
     formatManilaHalfHourSlotLabel,
@@ -18,10 +17,9 @@ import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
 import { colorForOperationalSpaceId } from '../../utils/spaceColors';
 import { operationalSpaceLabel } from '../../utils/operationalSpaceLabel';
 import { ui } from '../../theme';
+import { buildSlotsForOperatingDay, normalizeOperatingHoursPayload } from '../../utils/operatingHours';
 import StatusIndicator from './StatusIndicator';
 
-const DAY_START_HOUR = 9;
-const DAY_END_HOUR = 18;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function localYmdNow() {
@@ -123,6 +121,27 @@ export default function AdminScheduleOverview({ spaces, spacesLoadError, embedde
     const [dayLoadError, setDayLoadError] = useState(false);
     const [loadingDay, setLoadingDay] = useState(false);
     const [activeSpaceId, setActiveSpaceId] = useState('');
+    const [operatingHoursConfig, setOperatingHoursConfig] = useState(() => normalizeOperatingHoursPayload(null));
+    const [operatingHoursLoaded, setOperatingHoursLoaded] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.get('/policies/operating-hours')
+            .then(({ data }) => {
+                if (cancelled) return;
+                const payload = unwrapData(data);
+                setOperatingHoursConfig(normalizeOperatingHoursPayload(payload?.hours));
+            })
+            .catch(() => {
+                if (!cancelled) setOperatingHoursConfig(normalizeOperatingHoursPayload(null));
+            })
+            .finally(() => {
+                if (!cancelled) setOperatingHoursLoaded(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useEffect(() => {
         if (!cellYmdBounds.min || !cellYmdBounds.max) {
@@ -204,10 +223,10 @@ export default function AdminScheduleOverview({ spaces, spacesLoadError, embedde
     );
 
     const activeSlots = useMemo(() => {
-        if (!activeRow?.space?.id) return [];
+        if (!operatingHoursLoaded || !activeRow?.space?.id || !selectedYmd) return [];
         const reserved = Array.isArray(activeRow.reserved_slots) ? activeRow.reserved_slots : [];
-        return buildManilaHalfHourSlots(selectedYmd, reserved, DAY_START_HOUR, DAY_END_HOUR);
-    }, [activeRow, selectedYmd]);
+        return buildSlotsForOperatingDay(operatingHoursConfig, selectedYmd, reserved);
+    }, [operatingHoursLoaded, operatingHoursConfig, activeRow, selectedYmd]);
     const visibleActiveSlots = useMemo(
         () => activeSlots.filter((slot) => !shouldHideSlotForToday(selectedYmd, slot)),
         [activeSlots, selectedYmd]

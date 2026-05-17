@@ -21,7 +21,7 @@ final class ReservationLeadTimePolicy
 
     public const SAME_DAY_DENIED_MESSAGE = 'Same-day reservations are not allowed.';
 
-    public const CUTOFF_BLACKOUT_MESSAGE = 'Reservations are unavailable after 4:30 PM. Booking resumes at 9:00 AM tomorrow.';
+    public const CUTOFF_BLACKOUT_MESSAGE = 'Reservations are unavailable after 4:30 PM. Booking resumes tomorrow morning.';
 
     /** @deprecated Use {@see SAME_DAY_DENIED_MESSAGE} or {@see CUTOFF_BLACKOUT_MESSAGE}. */
     public const ERROR_MESSAGE = 'Reservations for the selected date are no longer allowed based on system rules.';
@@ -29,10 +29,6 @@ final class ReservationLeadTimePolicy
     private const NEXT_DAY_CUTOFF_HOUR = 16;
 
     private const NEXT_DAY_CUTOFF_MINUTE = 30;
-
-    private const MORNING_RESET_HOUR = 9;
-
-    private const MORNING_RESET_MINUTE = 0;
 
     public static function isExempt(?User $user): bool
     {
@@ -46,8 +42,8 @@ final class ReservationLeadTimePolicy
     {
         $local = $now->copy()->timezone(self::TZ);
         $minutes = $local->hour * 60 + $local->minute;
-        $cutoffMinutes = self::NEXT_DAY_CUTOFF_HOUR * 60 + self::NEXT_DAY_CUTOFF_MINUTE;
-        $resetMinutes = self::MORNING_RESET_HOUR * 60 + self::MORNING_RESET_MINUTE;
+        $cutoffMinutes = BookingSlotCutoff::cutoffMinutes();
+        $resetMinutes = BookingSlotCutoff::morningResetMinutes();
 
         return $minutes >= $cutoffMinutes || $minutes < $resetMinutes;
     }
@@ -84,7 +80,7 @@ final class ReservationLeadTimePolicy
         if (self::isInEveningBookingBlackout($now)) {
             $tomorrowStart = $now->copy()->timezone(self::TZ)->startOfDay()->addDay();
             if ($start->copy()->timezone(self::TZ)->gte($tomorrowStart)) {
-                return self::CUTOFF_BLACKOUT_MESSAGE;
+                return BookingSlotCutoff::cutoffBlackoutMessage();
             }
         }
 

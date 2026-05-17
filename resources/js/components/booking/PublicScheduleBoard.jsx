@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../api';
 import { unwrapData } from '../../utils/apiEnvelope';
 import BookingCalendar from './BookingCalendar';
+import SchedulePanelErrorBoundary from './SchedulePanelErrorBoundary';
 
 export default function PublicScheduleBoard() {
     const [spaces, setSpaces] = useState([]);
@@ -28,14 +29,16 @@ export default function PublicScheduleBoard() {
     }, []);
 
     return (
-        <BookingCalendar
-            user={null}
-            spaces={spaces}
-            spacesLoadError={spacesLoadError}
-            embedded
-            readOnly
-            headingLevel={2}
-        />
+        <SchedulePanelErrorBoundary>
+            <BookingCalendar
+                user={null}
+                spaces={spaces}
+                spacesLoadError={spacesLoadError}
+                embedded
+                readOnly
+                headingLevel={2}
+            />
+        </SchedulePanelErrorBoundary>
     );
 }
 

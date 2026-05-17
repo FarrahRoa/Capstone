@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../api';
 import { unwrapData } from '../../utils/apiEnvelope';
 import {
-    buildManilaHalfHourSlots,
     buildManilaWeekStripContaining,
     formatManilaHalfHourSlotLabel,
     formatManilaSlotGutterTimes,
@@ -13,10 +12,14 @@ import {
     shiftManilaYmd,
 } from '../../utils/manilaTime';
 import { BOOKING_TIMEZONE } from '../../utils/timeDisplay';
+import { cutoffBlackoutMessage } from '../../utils/bookingSlotCutoff';
+import {
+    buildSlotsForOperatingDay,
+    coerceScheduleSlotList,
+    mapApiTimeSlotsToClientSlots,
+    normalizeOperatingHoursPayload,
+} from '../../utils/operatingHours';
 import StatusIndicator from './StatusIndicator';
-
-const DAY_START_HOUR = 9;
-const DAY_END_HOUR = 18;
 
 function localYmdNow() {
     const d = new Date();
@@ -57,6 +60,28 @@ export default function LoginScheduleOverview() {
     const [reservedSlots, setReservedSlots] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [operatingHoursConfig, setOperatingHoursConfig] = useState(() => normalizeOperatingHoursPayload(null));
+    const [operatingHoursLoaded, setOperatingHoursLoaded] = useState(false);
+    const [apiDayTimeSlots, setApiDayTimeSlots] = useState([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.get('/policies/operating-hours')
+            .then(({ data }) => {
+                if (cancelled) return;
+                const payload = unwrapData(data);
+                setOperatingHoursConfig(normalizeOperatingHoursPayload(payload?.hours));
+            })
+            .catch(() => {
+                if (!cancelled) setOperatingHoursConfig(normalizeOperatingHoursPayload(null));
+            })
+            .finally(() => {
+                if (!cancelled) setOperatingHoursLoaded(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -100,10 +125,12 @@ export default function LoginScheduleOverview() {
                 const row = rows.find((r) => String(r?.space?.id) === String(selectedSpaceId));
                 const occ = row?.occupied_slots;
                 setReservedSlots(Array.isArray(occ) ? occ : []);
+                setApiDayTimeSlots(Array.isArray(payload?.time_slots) ? payload.time_slots : []);
             })
             .catch(() => {
                 if (!cancelled) {
                     setReservedSlots([]);
+                    setApiDayTimeSlots([]);
                     setError('Could not load the schedule preview.');
                 }
             })
@@ -136,12 +163,22 @@ export default function LoginScheduleOverview() {
 
     const selectedSpace = spaces.find((s) => String(s.id) === String(selectedSpaceId));
 
-    const slots = useMemo(
-        () => buildManilaHalfHourSlots(selectedYmd, reservedSlots, DAY_START_HOUR, DAY_END_HOUR),
-        [selectedYmd, reservedSlots]
-    );
+    const slots = useMemo(() => {
+        if (!operatingHoursLoaded || !selectedYmd) return [];
+        try {
+            const fromApi = mapApiTimeSlotsToClientSlots(apiDayTimeSlots, selectedYmd, reservedSlots);
+            if (fromApi?.length) {
+                return coerceScheduleSlotList(fromApi);
+            }
+            return coerceScheduleSlotList(
+                buildSlotsForOperatingDay(operatingHoursConfig, selectedYmd, reservedSlots)
+            );
+        } catch {
+            return [];
+        }
+    }, [operatingHoursLoaded, operatingHoursConfig, selectedYmd, reservedSlots, apiDayTimeSlots]);
     const visibleSlots = useMemo(
-        () => slots.filter((slot) => !shouldHideSlotForToday(selectedYmd, slot)),
+        () => coerceScheduleSlotList(slots).filter((slot) => !shouldHideSlotForToday(selectedYmd, slot)),
         [slots, selectedYmd]
     );
 
@@ -239,6 +276,12 @@ export default function LoginScheduleOverview() {
                     <StatusIndicator status="unavailable" label="Booked (approved)" />
                 </div>
 
+                {operatingHoursLoaded ? (
+                    <p className="rounded-lg border border-amber-200/90 bg-amber-50 px-3 py-2 text-xs font-medium leading-snug text-amber-950">
+                        {cutoffBlackoutMessage(operatingHoursConfig)}
+                    </p>
+                ) : null}
+
                 {error && (
                     <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{error}</p>
                 )}
@@ -254,13 +297,19 @@ export default function LoginScheduleOverview() {
                     <div className="flex flex-1 items-center justify-center py-12">
                         <p className="text-sm font-medium text-slate-500">Loading schedule…</p>
                     </div>
+                ) : !visibleSlots?.length ? (
+                    <div className="flex flex-1 items-center justify-center px-4 py-12 text-center">
+                        <p className="rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500">
+                            Schedule currently unavailable. Please contact administration.
+                        </p>
+                    </div>
                 ) : (
                     <div
                         className="max-h-[min(28rem,50vh)] min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200/80 bg-white [scrollbar-width:thin]"
                         role="list"
                     >
                         <ul className="m-0 list-none divide-y divide-slate-100 p-0">
-                            {visibleSlots.map((slot) => {
+                            {(visibleSlots ?? []).map((slot) => {
                                 const label = formatManilaHalfHourSlotLabel(
                                     slot.hourStart,
                                     slot.minuteStart,
@@ -269,6 +318,33 @@ export default function LoginScheduleOverview() {
                                 );
                                 const rowKey = `${selectedSpaceId}-${selectedYmd}-${slot.hourStart}-${slot.minuteStart}`;
                                 const gutter = formatManilaSlotGutterTimes(slot);
+                                if (slot.bookingCutoffBlocked) {
+                                    return (
+                                        <li key={rowKey} className="list-none" role="listitem">
+                                            <div className="grid grid-cols-[4rem_1fr] gap-0 sm:grid-cols-[4.75rem_1fr]">
+                                                <div className="flex flex-col items-end justify-center border-r border-slate-100 bg-slate-50 py-2.5 pr-2 pl-1 text-right">
+                                                    <span className="text-[10px] font-bold tabular-nums text-slate-500">
+                                                        {gutter.start}
+                                                    </span>
+                                                    <span className="text-[9px] tabular-nums text-slate-400">
+                                                        {gutter.end}
+                                                    </span>
+                                                </div>
+                                                <div className="p-2">
+                                                    <div
+                                                        title="Reservations cannot start at or after 4:30 PM"
+                                                        className="flex min-h-[2.75rem] cursor-not-allowed flex-col justify-center rounded-lg border border-slate-300/90 bg-slate-100/90 px-3 py-2"
+                                                    >
+                                                        <p className="text-xs font-semibold text-slate-600">{label}</p>
+                                                        <p className="text-[10px] text-slate-500">
+                                                            Not available · after 4:30 PM cutoff
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    );
+                                }
                                 if (!slot.available) {
                                     return (
                                         <li key={rowKey} className="list-none" role="listitem">

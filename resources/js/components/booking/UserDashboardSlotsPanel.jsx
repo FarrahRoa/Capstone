@@ -6,10 +6,28 @@ import { getReservationStatusLabel } from '../../utils/reservationVocabulary';
 import { userFacingSpaceName } from '../../utils/userFacingSpaceName';
 import AvailableBookingSlotCard from './AvailableBookingSlotCard';
 
-function reservationForSlot(slot, reservedSlots) {
+function reservationForSlot(slot, reservedSlots, dateYmd) {
     const list = Array.isArray(reservedSlots) ? reservedSlots : [];
-    const slotStart = new Date(slot.start_at).getTime();
-    const slotEnd = new Date(slot.end_at).getTime();
+    if (!slot) return null;
+
+    let slotStart;
+    let slotEnd;
+    if (slot.start_at && slot.end_at) {
+        slotStart = new Date(slot.start_at).getTime();
+        slotEnd = new Date(slot.end_at).getTime();
+    } else if (
+        dateYmd &&
+        Number.isFinite(slot.hourStart) &&
+        Number.isFinite(slot.minuteStart) &&
+        Number.isFinite(slot.hourEnd) &&
+        Number.isFinite(slot.minuteEnd)
+    ) {
+        const pad = (n) => String(n).padStart(2, '0');
+        slotStart = Date.parse(`${dateYmd}T${pad(slot.hourStart)}:${pad(slot.minuteStart)}:00+08:00`);
+        slotEnd = Date.parse(`${dateYmd}T${pad(slot.hourEnd)}:${pad(slot.minuteEnd)}:00+08:00`);
+    } else {
+        return null;
+    }
     for (const r of list) {
         const rs = new Date(r.start_at).getTime();
         const re = new Date(r.end_at).getTime();
@@ -49,7 +67,12 @@ export default function UserDashboardSlotsPanel({
                 role="list"
                 aria-label={`Time slots for ${spaceLabel} on ${selectedYmd}`}
             >
-                {visibleSlots.map((slot) => {
+                {!Array.isArray(visibleSlots) || visibleSlots.length === 0 ? (
+                    <li className="list-none px-2 py-8 text-center text-sm text-slate-500">
+                        Schedule currently unavailable. Please contact administration.
+                    </li>
+                ) : null}
+                {(Array.isArray(visibleSlots) ? visibleSlots : []).map((slot) => {
                     const label = formatManilaHalfHourSlotLabel(
                         slot.hourStart,
                         slot.minuteStart,
@@ -61,7 +84,28 @@ export default function UserDashboardSlotsPanel({
                         slot.minuteStart
                     )}&end_time=${manilaTimeParamFromHour(slot.hourEnd, slot.minuteEnd)}`;
                     const rowKey = `${selectedSpaceId}-${selectedYmd}-${slot.hourStart}-${slot.minuteStart}`;
-                    const r = slot.available ? null : reservationForSlot(slot, reservedSlots);
+                    const r = slot.available ? null : reservationForSlot(slot, reservedSlots, selectedYmd);
+
+                    if (slot.bookingCutoffBlocked) {
+                        return (
+                            <li key={rowKey} className="list-none">
+                                <article
+                                    title="Reservations cannot start at or after 4:30 PM"
+                                    className={`${slotCardRow} cursor-not-allowed border-slate-300/90 bg-slate-100/90 shadow-inner`}
+                                >
+                                    <section className="flex min-w-0 flex-1 flex-col justify-center">
+                                        <p className="text-sm font-semibold text-slate-600">{label}</p>
+                                        <p className="mt-1 text-xs font-medium text-slate-500">
+                                            Not available · after 4:30 PM cutoff
+                                        </p>
+                                    </section>
+                                    <span className="shrink-0 self-end rounded-md border border-slate-400/60 bg-slate-200/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                        Closed
+                                    </span>
+                                </article>
+                            </li>
+                        );
+                    }
 
                     if (!slot.available) {
                         return (

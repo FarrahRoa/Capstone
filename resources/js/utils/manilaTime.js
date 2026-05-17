@@ -1,4 +1,5 @@
 import { BOOKING_TIMEZONE } from './timeDisplay';
+import { isSlotStartAtOrAfterBookingCutoff } from './bookingSlotCutoff';
 
 /** Philippines does not observe DST; PHT is always UTC+8. */
 export const MANILA_OFFSET = '+08:00';
@@ -238,42 +239,96 @@ export function formatManilaSlotLabel(hourStart, hourEnd) {
     return `${startLabel} – ${endLabel}`;
 }
 
+function wallClockToMinutes(hhmm) {
+    const [h, m] = String(hhmm || '00:00').split(':').map((x) => Number(x));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+    return h * 60 + m;
+}
+
+function minutesToWallParts(totalMinutes) {
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return { hour: h, minute: m };
+}
+
 /**
- * Half-hour slot builder (HH:00–HH:30, HH:30–(HH+1):00).
+ * Half-hour slots for a Manila civil day between open and close wall times (e.g. 06:00–18:30).
+ * Each slot is 30 minutes; the last slot ends exactly at close.
  *
- * @param {string} dateYmd
+ * @param {string} dateYmd YYYY-MM-DD
  * @param {{ start_at: string, end_at: string }[]} reserved
- * @param {number} dayStartHour inclusive
- * @param {number} dayEndHour exclusive (last slot ends at this hour)
+ * @param {string} openHhmm e.g. "06:00"
+ * @param {string} closeHhmm e.g. "18:30"
  */
-export function buildManilaHalfHourSlots(dateYmd, reserved, dayStartHour, dayEndHour) {
+export function buildManilaHalfHourSlotsForWindow(dateYmd, reserved, openHhmm, closeHhmm) {
+    const openM = wallClockToMinutes(openHhmm);
+    const closeM = wallClockToMinutes(closeHhmm);
+    if (!dateYmd || closeM <= openM) {
+        return [];
+    }
+
+    const totalMinutes = closeM - openM;
+    let totalSlots = Math.ceil(totalMinutes / 30);
+    const MAX_HALF_HOUR_SLOTS = 48;
+    const FALLBACK_SLOTS = 24;
+    if (totalSlots > MAX_HALF_HOUR_SLOTS || totalSlots <= 0) {
+        totalSlots = FALLBACK_SLOTS;
+    }
+
+    const list = Array.isArray(reserved) ? reserved : [];
     const slots = [];
-    const toMs = (h, m) => Date.parse(`${dateYmd}T${pad2(h)}:${pad2(m)}:00${MANILA_OFFSET}`);
-    for (let h = dayStartHour; h < dayEndHour; h++) {
-        for (const m of [0, 30]) {
-            const startMs = toMs(h, m);
-            const endMs = toMs(m === 0 ? h : h + 1, m === 0 ? 30 : 0);
-            let busy = false;
-            for (const r of reserved) {
-                const rs = new Date(r.start_at).getTime();
-                const re = new Date(r.end_at).getTime();
-                if (overlapsMs(startMs, endMs, rs, re)) {
-                    busy = true;
-                    break;
-                }
-            }
-            const endHour = m === 0 ? h : h + 1;
-            const endMinute = m === 0 ? 30 : 0;
-            slots.push({
-                hourStart: h,
-                minuteStart: m,
-                hourEnd: endHour,
-                minuteEnd: endMinute,
-                available: !busy,
-            });
+    const toMs = (totalM) => {
+        const { hour, minute } = minutesToWallParts(totalM);
+        return Date.parse(`${dateYmd}T${pad2(hour)}:${pad2(minute)}:00${MANILA_OFFSET}`);
+    };
+
+    for (let i = 0; i < totalSlots; i++) {
+        const startM = openM + i * 30;
+        const endM = startM + 30;
+        if (endM > closeM) {
+            break;
         }
+        const startMs = toMs(startM);
+        const endMs = toMs(endM);
+        let busy = false;
+        for (const r of list) {
+            const rs = new Date(r.start_at).getTime();
+            const re = new Date(r.end_at).getTime();
+            if (overlapsMs(startMs, endMs, rs, re)) {
+                busy = true;
+                break;
+            }
+        }
+        const startParts = minutesToWallParts(startM);
+        const endParts = minutesToWallParts(endM);
+        const bookingCutoffBlocked = isSlotStartAtOrAfterBookingCutoff(
+            startParts.hour,
+            startParts.minute
+        );
+        const status = bookingCutoffBlocked ? 'unavailable_cutoff' : busy ? 'occupied' : 'available';
+        slots.push({
+            hourStart: startParts.hour,
+            minuteStart: startParts.minute,
+            hourEnd: endParts.hour,
+            minuteEnd: endParts.minute,
+            available: !busy && !bookingCutoffBlocked,
+            bookingCutoffBlocked,
+            status,
+        });
     }
     return slots;
+}
+
+/**
+ * @deprecated Prefer {@link buildManilaHalfHourSlotsForWindow} with HH:mm from operating hours policy.
+ */
+export function buildManilaHalfHourSlots(dateYmd, reserved, dayStartHour, dayEndHour) {
+    return buildManilaHalfHourSlotsForWindow(
+        dateYmd,
+        reserved,
+        `${pad2(dayStartHour)}:00`,
+        `${pad2(dayEndHour)}:00`
+    );
 }
 
 /**

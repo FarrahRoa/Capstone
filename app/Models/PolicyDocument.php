@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -105,12 +106,42 @@ class PolicyDocument extends Model
         }
 
         return [
-            'day_start' => (string) ($hours['day_start'] ?? $def['day_start']),
-            'day_end' => (string) ($hours['day_end'] ?? $def['day_end']),
-            'weekend_day_start' => $ws,
-            'weekend_day_end' => $we,
+            'day_start' => self::normalizeWallClockHhmm($hours['day_start'] ?? null, $def['day_start']),
+            'day_end' => self::normalizeWallClockHhmm($hours['day_end'] ?? null, $def['day_end']),
+            'weekend_day_start' => $ws !== null ? self::normalizeWallClockHhmm($ws, $def['day_start']) : null,
+            'weekend_day_end' => $we !== null ? self::normalizeWallClockHhmm($we, $def['day_end']) : null,
             'max_booking_date' => $maxBookingDate,
         ];
+    }
+
+    /**
+     * Normalize admin-entered wall times (e.g. "06:00 am", "6:30 PM") to 24h H:i for comparisons.
+     */
+    public static function normalizeWallClockHhmm(mixed $raw, string $fallback = '06:00'): string
+    {
+        if (! is_string($raw)) {
+            return $fallback;
+        }
+        $trimmed = trim($raw);
+        if ($trimmed === '') {
+            return $fallback;
+        }
+
+        $tz = (string) config('app.timezone', 'Asia/Manila');
+
+        try {
+            return Carbon::parse('2000-01-01 '.$trimmed, $tz)->format('H:i');
+        } catch (\Throwable) {
+            try {
+                return Carbon::parse($trimmed, $tz)->format('H:i');
+            } catch (\Throwable) {
+                if (preg_match('/^(\d{1,2}):(\d{2})/', $trimmed, $m)) {
+                    return sprintf('%02d:%02d', (int) $m[1], (int) $m[2]);
+                }
+
+                return $fallback;
+            }
+        }
     }
 
     /**
@@ -157,7 +188,7 @@ class PolicyDocument extends Model
      *
      * @return array{start: string, end: string}
      */
-    public static function resolvedOperatingWindowForLocalDate(Carbon $localDateInTz): array
+    public static function resolvedOperatingWindowForLocalDate(CarbonInterface $localDateInTz): array
     {
         $hours = self::decodedOperatingHours();
         if ($localDateInTz->isWeekend()
@@ -199,8 +230,8 @@ class PolicyDocument extends Model
         while ($day->lte($lastDay)) {
             $win = self::resolvedOperatingWindowForLocalDate($day);
             try {
-                $open = $day->copy()->setTimeFromTimeString($win['start']);
-                $close = $day->copy()->setTimeFromTimeString($win['end']);
+                $open = Carbon::parse($day->format('Y-m-d').' '.$win['start'], $tz);
+                $close = Carbon::parse($day->format('Y-m-d').' '.$win['end'], $tz);
             } catch (\Throwable) {
                 return true;
             }
