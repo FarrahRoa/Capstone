@@ -60,7 +60,7 @@ class SpaceSeeder extends Seeder
             [
                 'name' => 'Confab',
                 'type' => Space::TYPE_CONFAB,
-                'capacity' => 1,
+                'capacity' => null,
                 'is_active' => true,
                 'is_confab_pool' => true,
             ]

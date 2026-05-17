@@ -95,6 +95,40 @@ class ConfabAssignmentWorkflowTest extends TestCase
         Mail::assertSent(ReservationVerificationMail::class);
     }
 
+    public function test_confab_pool_allows_participants_up_to_max_numbered_room_capacity(): void
+    {
+        Mail::fake();
+        $user = $this->makeStudent();
+        Sanctum::actingAs($user);
+        ['pool' => $pool, 'room' => $room] = $this->poolAndAssignableRoom();
+        $room->update(['capacity' => 15]);
+        $pool->update(['capacity' => 1]);
+
+        $start = now()->addDays(3)->setTime(10, 0)->toDateTimeString();
+        $end = now()->addDays(3)->setTime(11, 0)->toDateTimeString();
+
+        $ok = $this->postJson('/api/reservations', [
+            'space_id' => $pool->id,
+            'start_at' => $start,
+            'end_at' => $end,
+            'purpose' => 'Within capacity',
+            'event_title' => 'Event',
+            'participant_count' => 12,
+        ]);
+        $ok->assertStatus(201);
+
+        $over = $this->postJson('/api/reservations', [
+            'space_id' => $pool->id,
+            'start_at' => now()->addDays(4)->setTime(10, 0)->toDateTimeString(),
+            'end_at' => now()->addDays(4)->setTime(11, 0)->toDateTimeString(),
+            'purpose' => 'Over capacity',
+            'event_title' => 'Event',
+            'participant_count' => 16,
+        ]);
+        $over->assertStatus(422);
+        $over->assertJsonValidationErrors(['participant_count']);
+    }
+
     public function test_student_cannot_reserve_specific_confab_room_directly(): void
     {
         Mail::fake();

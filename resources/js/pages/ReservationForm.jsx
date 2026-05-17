@@ -106,15 +106,28 @@ export default function ReservationForm() {
 
     const isConfabPool = Boolean(selectedSpace?.is_confab_pool);
 
-    /** From `spaces.capacity` via /spaces; confab assignment pool is excluded (server skips enforcement there). */
-    const effectiveSeatingCapacity =
-        selectedSpace &&
-        !selectedSpace.is_confab_pool &&
-        selectedSpace.capacity != null &&
-        String(selectedSpace.capacity).trim() !== '' &&
-        Number(selectedSpace.capacity) > 0
-            ? Number(selectedSpace.capacity)
-            : null;
+    /** Per-space `capacity`; confab pool uses max capacity among numbered Confab rooms (matches backend). */
+    const effectiveSeatingCapacity = useMemo(() => {
+        if (!selectedSpace) {
+            return null;
+        }
+        if (selectedSpace.is_confab_pool) {
+            const caps = confabRoomComparisons
+                .map((room) => Number(room?.capacity))
+                .filter((n) => Number.isFinite(n) && n > 0);
+            return caps.length > 0 ? Math.max(...caps) : null;
+        }
+        const cap = Number(selectedSpace.capacity);
+        if (
+            selectedSpace.capacity != null &&
+            String(selectedSpace.capacity).trim() !== '' &&
+            Number.isFinite(cap) &&
+            cap > 0
+        ) {
+            return cap;
+        }
+        return null;
+    }, [selectedSpace, confabRoomComparisons]);
 
     const participantCountNum = participantCount === '' ? NaN : Number(participantCount);
     const participantOverCapacity =
@@ -126,8 +139,17 @@ export default function ReservationForm() {
 
     const capacityExceededMessage =
         effectiveSeatingCapacity != null
-            ? `The number of attendees exceeds the seating capacity for this space (Max: ${effectiveSeatingCapacity} seats).`
+            ? `Exceeded the seating capacity of ${selectedSpace?.name ?? 'this space'} (max ${effectiveSeatingCapacity}).`
             : 'The number of attendees exceeds the seating capacity for this space.';
+
+    useEffect(() => {
+        if (!import.meta.env.DEV || !requiresEventMeta) {
+            return;
+        }
+        console.log('Participants:', participantCountNum);
+        console.log('Capacity:', effectiveSeatingCapacity);
+        console.log('Space:', selectedSpace);
+    }, [requiresEventMeta, participantCountNum, effectiveSeatingCapacity, selectedSpace]);
 
     const reservationWindowPreview = useMemo(() => {
         if (!spaceIdVal || !selectedSpace) {
@@ -606,14 +628,15 @@ export default function ReservationForm() {
                 return;
             }
             const pc = Number(participantCount);
-            if (!pc || pc < 1) {
+            if (!Number.isFinite(pc) || pc < 1) {
                 setError('Participant count is required for this space.');
                 return;
             }
+            const seatingCapacity = Number(effectiveSeatingCapacity);
             if (
-                effectiveSeatingCapacity != null &&
-                Number.isFinite(pc) &&
-                pc > effectiveSeatingCapacity
+                Number.isFinite(seatingCapacity) &&
+                seatingCapacity > 0 &&
+                pc > seatingCapacity
             ) {
                 setError(capacityExceededMessage);
                 return;

@@ -12,6 +12,7 @@ use App\Support\ReservationDeanRouting;
 use App\Support\ReservationLeadTimePolicy;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Throwable;
 
@@ -183,20 +184,29 @@ class StoreReservationRequest extends FormRequest
                 }
             }
 
-            // Reservation Guidelines are the authoritative source for seating capacity.
-            // In this codebase the admin "Reservation Guidelines" screen persists the capacity per space in `spaces.capacity`.
-            $capRaw = $space->capacity;
-            if ($capRaw !== null && (int) $capRaw > 0) {
-                // Back-compat: older clients may send `expected_attendees`; current UI uses `participant_count`.
+            // Reservation Guidelines: per-space `spaces.capacity`; confab pool uses max numbered-room capacity.
+            $capacityLimit = $space->seatingCapacityLimit();
+            if ($capacityLimit !== null) {
                 $expectedAttendeesRaw = $this->input('expected_attendees', null);
                 $participantCountRaw = $this->input('participant_count', null);
 
                 $field = $expectedAttendeesRaw !== null ? 'expected_attendees' : 'participant_count';
                 $valRaw = $expectedAttendeesRaw !== null ? $expectedAttendeesRaw : $participantCountRaw;
-                $val = (int) ($valRaw ?? 0);
+                $participants = (int) ($valRaw ?? 0);
 
-                if ($val > (int) $capRaw) {
-                    $validator->errors()->add($field, 'Exceeded the Seating capacity of ' . $space->userFacingName());
+                Log::info('Seating validation', [
+                    'space' => $space->userFacingName(),
+                    'space_id' => $space->id,
+                    'capacity' => $capacityLimit,
+                    'participants' => $participants,
+                    'is_confab_pool' => $space->isConfabAssignmentPool(),
+                ]);
+
+                if ($participants > $capacityLimit) {
+                    $validator->errors()->add(
+                        $field,
+                        'Exceeded the Seating capacity of '.$space->userFacingName()
+                    );
 
                     return;
                 }

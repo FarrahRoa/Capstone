@@ -68,6 +68,30 @@ class Space extends Model
     }
 
     /**
+     * Max participants allowed for a reservation on this space.
+     * Confab pool uses the largest capacity among assignable numbered rooms (staff picks the room later).
+     */
+    public function seatingCapacityLimit(): ?int
+    {
+        if ($this->isConfabAssignmentPool()) {
+            $max = static::query()
+                ->where('type', self::TYPE_CONFAB)
+                ->where('is_confab_pool', false)
+                ->where('is_active', true)
+                ->whereNotNull('capacity')
+                ->max('capacity');
+
+            return $max !== null && (int) $max > 0 ? (int) $max : null;
+        }
+
+        if ($this->capacity === null || (int) $this->capacity <= 0) {
+            return null;
+        }
+
+        return (int) $this->capacity;
+    }
+
+    /**
      * Admin schedule / operations: show the real numbered Confab name when known; label the assignment pool clearly.
      * End-user APIs continue to use {@see userFacingName()} unless explicitly requesting operational labels.
      */
