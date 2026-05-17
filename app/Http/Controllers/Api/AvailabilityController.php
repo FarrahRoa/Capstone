@@ -7,6 +7,7 @@ use App\Models\Reservation;
 use App\Models\Space;
 use App\Models\User;
 use App\Support\ApiResponse;
+use App\Support\StudentSpaceAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,19 @@ class AvailabilityController extends Controller
             return response()->json(['message' => 'No spaces found.'], 404);
         }
 
+        $actor = $request->user();
+        if ($actor) {
+            $actor->loadMissing('role');
+            if ($actor->hasStudentRole()) {
+                foreach ($spaces as $space) {
+                    $blocked = StudentSpaceAccess::blockedMessageForSpace($space);
+                    if ($blocked !== null) {
+                        return response()->json(['message' => $blocked], 403);
+                    }
+                }
+            }
+        }
+
         $result = [];
         foreach ($spaces as $space) {
             $dayStart = $date->copy();
@@ -55,7 +69,7 @@ class AvailabilityController extends Controller
                     ->overlapping($dayStart, $dayEnd)
                     ->orderBy('start_at')
                     ->with(['user:id,name'])
-                    ->get(['id', 'user_id', 'start_at', 'end_at', 'status', 'event_title', 'event_description', 'purpose']);
+                    ->get(['id', 'user_id', 'start_at', 'end_at', 'status', 'event_title', 'event_description', 'purpose', 'reservation_number']);
 
             $displayName = $operational
                 ? $space->scheduleOperationalDisplayName()
@@ -419,22 +433,24 @@ class AvailabilityController extends Controller
      * fields are omitted unless the viewer owns the reservation or operational disclosure is enabled
      * ({@see AvailabilityController::index} $operational flag for staff schedule views).
      *
-     * @return array{id:int|string,start_at:string,end_at:string,status:string,title:?string,description:?string,user:?array{id:int|string,name:string}}
+     * @return array{id:int|string,reservation_number:?string,start_at:string,end_at:string,status:string,details_revealed:bool,title:?string,description:?string,user:?array{id:int|string,name:string}}
      */
     private function reservedSlotPayloadForViewer(Reservation $r, ?User $viewer, bool $operationalReveal): array
     {
         $viewerId = $viewer?->id;
         $isOwner = $viewerId !== null && (int) $r->user_id === (int) $viewerId;
-        $reveal = $isOwner || $operationalReveal;
+        $revealDetails = $isOwner || $operationalReveal;
 
         $base = [
             'id' => $r->id,
+            'reservation_number' => $r->reservation_number,
             'start_at' => $r->start_at->toIso8601String(),
             'end_at' => $r->end_at->toIso8601String(),
             'status' => $r->status,
+            'details_revealed' => $revealDetails,
         ];
 
-        if (! $reveal) {
+        if (! $revealDetails) {
             return $base + [
                 'title' => null,
                 'description' => null,

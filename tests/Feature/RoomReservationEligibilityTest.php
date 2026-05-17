@@ -6,6 +6,7 @@ use App\Mail\ReservationVerificationMail;
 use App\Models\Role;
 use App\Models\Space;
 use App\Models\User;
+use App\Support\StudentSpaceAccess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
@@ -44,7 +45,7 @@ class RoomReservationEligibilityTest extends TestCase
         ];
     }
 
-    public function test_eligible_med_user_can_reserve_med_confab(): void
+    public function test_eligible_med_user_with_student_role_cannot_reserve_med_confab(): void
     {
         Mail::fake();
 
@@ -67,8 +68,12 @@ class RoomReservationEligibilityTest extends TestCase
             'participant_count' => 5,
         ]);
 
-        $response->assertStatus(201);
-        Mail::assertSent(ReservationVerificationMail::class);
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['space_id']);
+        $response->assertJsonFragment([
+            'space_id' => [StudentSpaceAccess::CONFAB_ONLY_MESSAGE],
+        ]);
+        Mail::assertNothingSent();
     }
 
     public function test_non_med_user_cannot_reserve_med_confab(): void
@@ -91,7 +96,7 @@ class RoomReservationEligibilityTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['space_id']);
         $response->assertJsonFragment([
-            'space_id' => ['Only eligible med users can reserve Med Confab.'],
+            'space_id' => [StudentSpaceAccess::CONFAB_ONLY_MESSAGE],
         ]);
         Mail::assertNothingSent();
     }
@@ -100,7 +105,12 @@ class RoomReservationEligibilityTest extends TestCase
     {
         Mail::fake();
 
-        $user = $this->makeUserWithReservationCreate([
+        $facultyRole = Role::firstOrCreate(['slug' => 'faculty'], ['name' => 'Faculty', 'description' => 'Test']);
+        $user = User::factory()->create([
+            'role_id' => $facultyRole->id,
+            'is_activated' => true,
+            'user_type' => User::USER_TYPE_FACULTY_STAFF,
+            'email' => 'oop-'.uniqid().'@xu.edu.ph',
             'boardroom_eligible' => true,
             'college_office' => 'Office of the President',
         ]);
@@ -124,7 +134,12 @@ class RoomReservationEligibilityTest extends TestCase
     {
         Mail::fake();
 
-        $user = $this->makeUserWithReservationCreate([
+        $facultyRole = Role::firstOrCreate(['slug' => 'faculty'], ['name' => 'Faculty', 'description' => 'Test']);
+        $user = User::factory()->create([
+            'role_id' => $facultyRole->id,
+            'is_activated' => true,
+            'user_type' => User::USER_TYPE_FACULTY_STAFF,
+            'email' => 'ovp-'.uniqid().'@xu.edu.ph',
             'boardroom_eligible' => false,
             'college_office' => 'Office of the Vice-President Higher Education',
         ]);
@@ -148,7 +163,12 @@ class RoomReservationEligibilityTest extends TestCase
     {
         Mail::fake();
 
-        $user = $this->makeUserWithReservationCreate([
+        $facultyRole = Role::firstOrCreate(['slug' => 'faculty'], ['name' => 'Faculty', 'description' => 'Test']);
+        $user = User::factory()->create([
+            'role_id' => $facultyRole->id,
+            'is_activated' => true,
+            'user_type' => User::USER_TYPE_FACULTY_STAFF,
+            'email' => 'finance-'.uniqid().'@xu.edu.ph',
             'boardroom_eligible' => true,
             'college_office' => 'Finance',
         ]);
@@ -172,7 +192,7 @@ class RoomReservationEligibilityTest extends TestCase
         Mail::assertNothingSent();
     }
 
-    public function test_unrestricted_room_works_for_permitted_user(): void
+    public function test_student_role_cannot_reserve_avr(): void
     {
         Mail::fake();
 
@@ -195,7 +215,11 @@ class RoomReservationEligibilityTest extends TestCase
             $this->organizationEventAudiencePayload(),
         ));
 
-        $response->assertStatus(201);
-        Mail::assertSent(ReservationVerificationMail::class);
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['space_id']);
+        $response->assertJsonFragment([
+            'space_id' => [StudentSpaceAccess::CONFAB_ONLY_MESSAGE],
+        ]);
+        Mail::assertNothingSent();
     }
 }

@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import BookingCalendar from '../components/booking/BookingCalendar';
 import AdminScheduleOverview from '../components/booking/AdminScheduleOverview';
 import { isAdminScheduleViewer } from '../utils/isAdminScheduleViewer';
+import { applyStudentRoleSpaceFilter } from '../utils/studentSpaceAccess';
 
 export default function Calendar() {
     const { user, hasPermission } = useAuth();
@@ -16,14 +17,15 @@ export default function Calendar() {
         api.get('/spaces', { params: adminSchedule ? { operational: 1 } : {} })
             .then(({ data }) => {
                 const list = unwrapData(data);
-                setSpaces(Array.isArray(list) ? list : []);
+                const raw = Array.isArray(list) ? list : [];
+                setSpaces(applyStudentRoleSpaceFilter(user, raw));
                 setSpacesLoadError(false);
             })
             .catch(() => {
                 setSpaces([]);
                 setSpacesLoadError(true);
             });
-    }, [adminSchedule]);
+    }, [adminSchedule, user]);
 
     return (
         <div>

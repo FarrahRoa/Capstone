@@ -17,6 +17,8 @@ import { allowedHalfHourChoiceMap, coerceHalfHourToAllowed } from '../../utils/o
  * Each select is associated with a native <label htmlFor> + matching id.
  * Default: sr-only label text (compact). Optional visibleFieldLabels: small visible Hour/Minute
  * labels for stricter audits (staff New Reservation).
+ *
+ * Optional `disabledReasonTitle` renders a wrapper with a native tooltip when business rules disable the picker.
  */
 export default function HalfHourWallClockSelect({
     value,
@@ -28,6 +30,8 @@ export default function HalfHourWallClockSelect({
     visibleFieldLabels = false,
     /** When set, only these HH:mm half-hour times are selectable (e.g. within operating hours). */
     allowedHhmmList = null,
+    /** Browser tooltip explaining why picks are blocked (shown when `disabled` is true). */
+    disabledReasonTitle = null,
 }) {
     const choiceMap = useMemo(() => allowedHalfHourChoiceMap(allowedHhmmList), [allowedHhmmList]);
 
@@ -57,8 +61,17 @@ export default function HalfHourWallClockSelect({
     const idH = idPrefix ? `${idPrefix}-hour` : undefined;
     const idM = idPrefix ? `${idPrefix}-minute` : undefined;
 
+    const wrapIfPolicy = (node) =>
+        disabled && disabledReasonTitle ? (
+            <div className="rounded-md opacity-65 cursor-not-allowed" title={disabledReasonTitle} aria-disabled="true">
+                {node}
+            </div>
+        ) : (
+            node
+        );
+
     if (visibleFieldLabels) {
-        return (
+        return wrapIfPolicy(
             <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_4.75rem] gap-x-1.5 gap-y-1">
                 <label htmlFor={idH} className="text-xs font-medium text-slate-700">
                     Hour
@@ -98,11 +111,11 @@ export default function HalfHourWallClockSelect({
                         </option>
                     ))}
                 </select>
-            </div>
+            </div>,
         );
     }
 
-    return (
+    return wrapIfPolicy(
         <div className="flex items-center gap-1.5 w-full">
             <label className="min-w-0 flex-1" htmlFor={idH}>
                 <span className="sr-only">{hourLabel}</span>
@@ -139,6 +152,6 @@ export default function HalfHourWallClockSelect({
                     ))}
                 </select>
             </label>
-        </div>
+        </div>,
     );
 }

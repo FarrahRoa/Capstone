@@ -20,7 +20,7 @@ class ReservationApprovedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Library reservation approved – ' . $this->reservation->reservation_number,
+            subject: 'Library reservation approved – ' . ($this->reservation->reservation_number ?? '#'.$this->reservation->id),
             from: config('mail.from.address'),
         );
     }

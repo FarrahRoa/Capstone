@@ -14,7 +14,6 @@ use App\Support\ReservationUserPriority;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
@@ -135,8 +134,6 @@ final class ReservationGlobalOverrideService
                 }
             }
 
-            $reservationNumber = $locked->reservation_number ?: ('RES-' . strtoupper(Str::random(8)));
-
             ReservationOverrideLog::create([
                 'reservation_id' => $locked->id,
                 'admin_user_id' => $admin->id,
@@ -155,7 +152,6 @@ final class ReservationGlobalOverrideService
                 'start_at' => $start,
                 'end_at' => $end,
                 'status' => Reservation::STATUS_OVERRIDDEN,
-                'reservation_number' => $reservationNumber,
                 'approved_by' => $admin->id,
                 'approved_at' => now(),
                 'override_reason' => $reason,
@@ -165,6 +161,8 @@ final class ReservationGlobalOverrideService
                 'override_previous_start_at' => $prevStart,
                 'override_previous_end_at' => $prevEnd,
             ]);
+
+            app(ReservationReadableIdService::class)->assignIfMissing($locked);
 
             ReservationLog::create([
                 'reservation_id' => $locked->id,

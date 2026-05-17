@@ -4,8 +4,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [App\Http\Controllers\Api\AuthController::class, 'login'])->middleware('throttle:otp-login');
 Route::post('/admin/login', [App\Http\Controllers\Api\AuthController::class, 'adminLogin'])->middleware('throttle:otp-login');
-Route::post('/otp/verify', [App\Http\Controllers\Api\AuthController::class, 'verifyOtp'])->middleware('throttle:otp-verify');
-Route::post('/otp/resend', [App\Http\Controllers\Api\AuthController::class, 'resendOtp'])->middleware('throttle:otp-resend');
+Route::post('/otp/verify', [App\Http\Controllers\Api\AuthController::class, 'verifyOtp']);
+Route::post('/otp/resend', [App\Http\Controllers\Api\AuthController::class, 'resendOtp']);
 
 Route::get('/admin/librarian-invite/validate', [App\Http\Controllers\Api\LibrarianInviteController::class, 'validateInvite']);
 Route::post('/admin/librarian-invite/accept', [App\Http\Controllers\Api\LibrarianInviteController::class, 'accept']);
@@ -18,6 +18,7 @@ Route::get('/availability/month-summary', [App\Http\Controllers\Api\Availability
 Route::get('/availability/month-overview', [App\Http\Controllers\Api\AvailabilityController::class, 'monthOverview']);
 Route::get('/affiliations', [App\Http\Controllers\Api\AffiliationController::class, 'index']);
 Route::get('/policies/operating-hours', [App\Http\Controllers\Api\PolicyController::class, 'operatingHours']);
+Route::get('/policies/booking-clock', [App\Http\Controllers\Api\PolicyController::class, 'bookingClock']);
 
 Route::post('/reservations/confirm-email', [App\Http\Controllers\Api\ReservationController::class, 'confirmEmail']);
 

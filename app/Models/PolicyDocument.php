@@ -60,7 +60,7 @@ class PolicyDocument extends Model
     }
 
     /**
-     * @return array{day_start: string, day_end: string, weekend_day_start: ?string, weekend_day_end: ?string}
+     * @return array{day_start: string, day_end: string, weekend_day_start: ?string, weekend_day_end: ?string, max_booking_date: ?string}
      */
     public static function defaultOperatingHours(): array
     {
@@ -69,11 +69,12 @@ class PolicyDocument extends Model
             'day_end' => '18:30',
             'weekend_day_start' => null,
             'weekend_day_end' => null,
+            'max_booking_date' => null,
         ];
     }
 
     /**
-     * @return array{day_start: string, day_end: string, weekend_day_start: ?string, weekend_day_end: ?string}
+     * @return array{day_start: string, day_end: string, weekend_day_start: ?string, weekend_day_end: ?string, max_booking_date: ?string}
      */
     public static function decodedOperatingHours(): array
     {
@@ -93,12 +94,62 @@ class PolicyDocument extends Model
             $we = null;
         }
 
+        $maxBookingDate = $hours['max_booking_date'] ?? null;
+        $maxBookingDate = is_string($maxBookingDate) && $maxBookingDate !== '' ? $maxBookingDate : null;
+        if ($maxBookingDate !== null) {
+            try {
+                $maxBookingDate = Carbon::parse($maxBookingDate, (string) config('app.timezone'))->format('Y-m-d');
+            } catch (\Throwable) {
+                $maxBookingDate = null;
+            }
+        }
+
         return [
             'day_start' => (string) ($hours['day_start'] ?? $def['day_start']),
             'day_end' => (string) ($hours['day_end'] ?? $def['day_end']),
             'weekend_day_start' => $ws,
             'weekend_day_end' => $we,
+            'max_booking_date' => $maxBookingDate,
         ];
+    }
+
+    /**
+     * True when any portion of the reservation falls on a Manila civil day after max_booking_date.
+     */
+    public static function reservationBeyondMaxBookingDate($start, $end, string $tz): bool
+    {
+        $maxYmd = self::decodedOperatingHours()['max_booking_date'] ?? null;
+        if (! is_string($maxYmd) || $maxYmd === '') {
+            return false;
+        }
+
+        try {
+            $start = $start instanceof Carbon ? $start : Carbon::parse((string) $start, $tz);
+            $end = $end instanceof Carbon ? $end : Carbon::parse((string) $end, $tz);
+        } catch (\Throwable) {
+            return true;
+        }
+
+        $startDay = $start->copy()->timezone($tz)->format('Y-m-d');
+        $endDay = $end->copy()->timezone($tz)->format('Y-m-d');
+
+        return $startDay > $maxYmd || $endDay > $maxYmd;
+    }
+
+    public static function maxBookingDateValidationMessage(): string
+    {
+        $maxYmd = self::decodedOperatingHours()['max_booking_date'] ?? null;
+        if (! is_string($maxYmd) || $maxYmd === '') {
+            return 'Reservations cannot be made beyond the configured booking window.';
+        }
+
+        try {
+            $label = Carbon::parse($maxYmd, (string) config('app.timezone'))->format('F j, Y');
+        } catch (\Throwable) {
+            $label = $maxYmd;
+        }
+
+        return "Reservations cannot be made beyond {$label}.";
     }
 
     /**

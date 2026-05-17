@@ -17,6 +17,12 @@ class Space extends Model
     /** Standard confab rooms (Confab 1…N). */
     public const TYPE_CONFAB = 'confab';
 
+    public const TYPE_AVR = 'avr';
+
+    public const TYPE_LOBBY = 'lobby';
+
+    public const TYPE_LECTURE = 'lecture';
+
     protected $fillable = ['name', 'slug', 'type', 'capacity', 'is_active', 'is_confab_pool', 'guideline_details', 'image_path'];
 
     protected $appends = ['image_url'];

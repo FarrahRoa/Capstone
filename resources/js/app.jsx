@@ -2,8 +2,10 @@ import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import AdminAreaRoute from './components/admin/AdminAreaRoute';
+import AdminPermissionGate from './components/admin/AdminPermissionGate';
 const Layout = lazy(() => import('./components/Layout'));
-const HomeDashboard = lazy(() => import('./pages/HomeDashboard'));
+import HomeDashboard from './pages/HomeDashboard';
 
 const Login = lazy(() => import('./pages/Login'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
@@ -11,19 +13,20 @@ const AdminInviteSetPassword = lazy(() => import('./pages/AdminInviteSetPassword
 const OTPVerify = lazy(() => import('./pages/OTPVerify'));
 const CompleteProfile = lazy(() => import('./pages/CompleteProfile'));
 const AccountSettings = lazy(() => import('./pages/AccountSettings'));
-const Calendar = lazy(() => import('./pages/Calendar'));
+import Calendar from './pages/Calendar';
 const ReservationForm = lazy(() => import('./pages/ReservationForm'));
 const MyReservations = lazy(() => import('./pages/MyReservations'));
 const ConfirmReservation = lazy(() => import('./pages/ConfirmReservation'));
-const AdminReservations = lazy(() => import('./pages/admin/AdminReservations'));
-const AdminReports = lazy(() => import('./pages/admin/AdminReports'));
-const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
-const AdminSpaces = lazy(() => import('./pages/admin/AdminSpaces'));
-const AdminPolicies = lazy(() => import('./pages/admin/AdminPolicies'));
-const AdminDeanEmails = lazy(() => import('./pages/admin/AdminDeanEmails'));
-const CollegeOfficeManager = lazy(() => import('./pages/admin/CollegeOfficeManager'));
-const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours'));
-const AdminCloudSync = lazy(() => import('./pages/admin/AdminCloudSync'));
+/** Eager imports: lazy admin pages under a parent Suspense unmount the whole /admin shell (hamburger vanishes). */
+import AdminReservations from './pages/admin/AdminReservations';
+import AdminReports from './pages/admin/AdminReports';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminSpaces from './pages/admin/AdminSpaces';
+import AdminPolicies from './pages/admin/AdminPolicies';
+import AdminDeanEmails from './pages/admin/AdminDeanEmails';
+import CollegeOfficeManager from './pages/admin/CollegeOfficeManager';
+import AdminOperatingHours from './pages/admin/AdminOperatingHours';
+import AdminCloudSync from './pages/admin/AdminCloudSync';
 const Unauthorized = lazy(() => import('./pages/Unauthorized'));
 
 function RouteLoading() {
@@ -62,6 +65,11 @@ function withLayout(node) {
     );
 }
 
+/** /admin landing — always dashboard inside the admin shell. */
+function AdminIndexRedirect() {
+    return <Navigate to="dashboard" replace />;
+}
+
 function AppRoutes() {
     return (
         <Suspense fallback={<RouteLoading />}>
@@ -88,6 +96,90 @@ function AppRoutes() {
                     }
                 />
                 <Route path="/confirm-reservation" element={<ConfirmReservation />} />
+                <Route path="/admin" element={<AdminAreaRoute />}>
+                    <Route index element={<AdminIndexRedirect />} />
+                    <Route path="dashboard" element={<HomeDashboard />} />
+                    <Route
+                        path="calendar"
+                        element={
+                            <AdminPermissionGate permission="calendar.view">
+                                <Calendar />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="reservations"
+                        element={
+                            <AdminPermissionGate permission="reservation.view_all">
+                                <AdminReservations />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="reports"
+                        element={
+                            <AdminPermissionGate permission="reports.view">
+                                <AdminReports />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="users"
+                        element={
+                            <AdminPermissionGate permission="users.manage">
+                                <AdminUsers />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="spaces"
+                        element={
+                            <AdminPermissionGate permission="spaces.manage">
+                                <AdminSpaces />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="policies"
+                        element={
+                            <AdminPermissionGate permission="policies.manage">
+                                <AdminPolicies />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="operating-hours"
+                        element={
+                            <AdminPermissionGate permission="policies.manage">
+                                <AdminOperatingHours />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="dean-emails"
+                        element={
+                            <AdminPermissionGate permission="policies.manage">
+                                <AdminDeanEmails />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="organizations"
+                        element={
+                            <AdminPermissionGate permission="users.manage">
+                                <CollegeOfficeManager />
+                            </AdminPermissionGate>
+                        }
+                    />
+                    <Route
+                        path="cloud-sync"
+                        element={
+                            <AdminPermissionGate permission="system.cloud_sync">
+                                <AdminCloudSync />
+                            </AdminPermissionGate>
+                        }
+                    />
+                </Route>
                 <Route
                     path="/"
                     element={
@@ -117,78 +209,6 @@ function AppRoutes() {
                     element={
                         <PrivateRoute requiredPermission="reservation.view_own">
                             {withLayout(<MyReservations />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/reservations"
-                    element={
-                        <PrivateRoute requiredPermission="reservation.view_all">
-                            {withLayout(<AdminReservations />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/reports"
-                    element={
-                        <PrivateRoute requiredPermission="reports.view">
-                            {withLayout(<AdminReports />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/users"
-                    element={
-                        <PrivateRoute requiredPermission="users.manage">
-                            {withLayout(<AdminUsers />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/spaces"
-                    element={
-                        <PrivateRoute requiredPermission="spaces.manage">
-                            {withLayout(<AdminSpaces />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/policies"
-                    element={
-                        <PrivateRoute requiredPermission="policies.manage">
-                            {withLayout(<AdminPolicies />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/operating-hours"
-                    element={
-                        <PrivateRoute requiredPermission="policies.manage">
-                            {withLayout(<AdminOperatingHours />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/dean-emails"
-                    element={
-                        <PrivateRoute requiredPermission="policies.manage">
-                            {withLayout(<AdminDeanEmails />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/organizations"
-                    element={
-                        <PrivateRoute requiredPermission="users.manage">
-                            {withLayout(<CollegeOfficeManager />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route
-                    path="/admin/cloud-sync"
-                    element={
-                        <PrivateRoute requiredPermission="system.cloud_sync">
-                            {withLayout(<AdminCloudSync />)}
                         </PrivateRoute>
                     }
                 />

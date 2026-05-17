@@ -10,6 +10,7 @@ use App\Mail\Reservation\ReservationVerificationMail;
 use App\Models\Reservation;
 use App\Models\ReservationLog;
 use App\Models\Space;
+use App\Services\ReservationReadableIdService;
 use App\Support\ApiResponse;
 use App\Support\ReservationDeanRouting;
 use Carbon\Carbon;
@@ -133,6 +134,14 @@ class ReservationController extends Controller
                     'notes' => null,
                 ]);
 
+                $reservation->load('user');
+                app(ReservationReadableIdService::class)->assignAfterSuccessfulCreate(
+                    $reservation,
+                    $spaceRow,
+                    $request->user()
+                );
+                $reservation->refresh();
+
                 // Phase 3 hardening: verification email is part of "successful create".
                 // If sending fails, the transaction must roll back so we don't leave an unusable reservation behind.
                 $reservation->load('space', 'user');
@@ -244,7 +253,6 @@ class ReservationController extends Controller
                     'status' => $nextStatus,
                     'approved_by' => null,
                     'approved_at' => null,
-                    'reservation_number' => null,
                     'rejected_reason' => null,
                     'event_request_type' => $eventAudience,
                 ]);

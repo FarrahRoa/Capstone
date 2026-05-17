@@ -6,6 +6,14 @@ import { getSpaceIneligibilityMessage, getSpaceRestrictionLabel, isUserEligibleF
 import { BOOKING_TIMEZONE, formatReservationRange } from '../utils/timeDisplay';
 import { manilaYmdFromInstant } from '../utils/manilaTime';
 import {
+    exemptFromReservationLeadTime,
+    getMinimumBookableManilaYmd,
+    messageForLeadTimeViolation,
+    policyBlockReasonForManilaReservationDay,
+    standardUserBookingViolatesLeadTimeRules,
+} from '../utils/reservationLeadTimePolicy';
+import { useBookingPolicyClock } from '../utils/useBookingPolicyClock';
+import {
     bookingKindFromSpace,
     buildStartEndPayloadFromWallClock,
     halfHourHhmmFromOptionalQueryParam,
@@ -18,6 +26,7 @@ import {
     allowedStartHhmmList,
     allowedStartHhmmListBeforeEnd,
     normalizeOperatingHoursPayload,
+    isYmdAfterMaxBooking,
     operatingHoursWallClockError,
     resolveOperatingWindowForYmd,
 } from '../utils/operatingHours';
@@ -25,6 +34,7 @@ import { ui } from '../theme';
 import HalfHourWallClockSelect from '../components/booking/HalfHourWallClockSelect';
 import SpaceShowcaseCarousel from '../components/booking/SpaceShowcaseCarousel';
 import { spaceGuidelinesDetailRows, spaceGuidelinesHasDetails } from '../utils/spaceGuidelineDisplay';
+import { applyStudentRoleSpaceFilter } from '../utils/studentSpaceAccess';
 
 function holidayForYmd(holidays, ymd) {
     if (!ymd || !Array.isArray(holidays)) return null;
@@ -51,6 +61,9 @@ export default function ReservationForm() {
     const visibleReservationTimeLabels =
         hasPermission('reservation.view_all') ||
         new Set(['admin', 'librarian']).has((user?.role?.slug || '').toLowerCase());
+    /** Only role slug `admin` bypasses Manila same-day / post-4:30 lead-time limits (matches server). */
+    const reservationLeadTimeExempt = exemptFromReservationLeadTime(user);
+    const policyClock = useBookingPolicyClock();
     const [searchParams] = useSearchParams();
     const spaceId = searchParams.get('space_id');
     const dateParam = searchParams.get('date');
@@ -205,11 +218,12 @@ export default function ReservationForm() {
         api.get('/spaces').then(({ data }) => {
             const list = unwrapData(data);
             const raw = Array.isArray(list) ? list : [];
-            setShowcaseSpaces(raw);
-            setSpaces(raw.filter((s) => !(s.type === 'confab' && !s.is_confab_pool)));
+            const visible = applyStudentRoleSpaceFilter(user, raw);
+            setShowcaseSpaces(visible);
+            setSpaces(visible.filter((s) => !(s.type === 'confab' && !s.is_confab_pool)));
             if (spaceId && !spaceIdVal) setSpaceIdVal(spaceId);
         });
-    }, [spaceId]);
+    }, [spaceId, user]);
 
     useEffect(() => {
         if (!spaceIdVal || spaces.length === 0) return;
@@ -428,6 +442,112 @@ export default function ReservationForm() {
         operatingHoursConfig,
     ]);
 
+    const minimumBookableYmd = useMemo(() => {
+        if (reservationLeadTimeExempt) return null;
+        return getMinimumBookableManilaYmd(policyClock);
+    }, [reservationLeadTimeExempt, policyClock]);
+
+    const maxBookableYmd = operatingHoursConfig.max_booking_date || null;
+
+    const maxBookingBlockMessage = useMemo(() => {
+        if (!maxBookableYmd) return '';
+        if (bookingKind === 'avr_range') {
+            if (isYmdAfterMaxBooking(rangeStartDate, maxBookableYmd) || isYmdAfterMaxBooking(rangeEndDate, maxBookableYmd)) {
+                return `Reservations cannot be made beyond ${maxBookableYmd}.`;
+            }
+            return '';
+        }
+        return isYmdAfterMaxBooking(date, maxBookableYmd) ? `Reservations cannot be made beyond ${maxBookableYmd}.` : '';
+    }, [maxBookableYmd, bookingKind, date, rangeStartDate, rangeEndDate]);
+
+    const standardDetailPolicyDayReason = useMemo(() => {
+        if (reservationLeadTimeExempt) return null;
+        if (bookingKind === 'avr_range') return null;
+        return policyBlockReasonForManilaReservationDay(date, policyClock);
+    }, [reservationLeadTimeExempt, bookingKind, date, policyClock]);
+
+    const avrRangeStartPolicyReason = useMemo(() => {
+        if (reservationLeadTimeExempt || bookingKind !== 'avr_range') return null;
+        return policyBlockReasonForManilaReservationDay(rangeStartDate, policyClock);
+    }, [reservationLeadTimeExempt, bookingKind, rangeStartDate, policyClock]);
+
+    const avrRangeEndPolicyReason = useMemo(() => {
+        if (reservationLeadTimeExempt || bookingKind !== 'avr_range') return null;
+        return policyBlockReasonForManilaReservationDay(rangeEndDate, policyClock);
+    }, [reservationLeadTimeExempt, bookingKind, rangeEndDate, policyClock]);
+
+    const avrRangeEndDateInputMin = useMemo(() => {
+        if (bookingKind !== 'avr_range') return undefined;
+        if (reservationLeadTimeExempt) return rangeStartDate || undefined;
+        const rs = rangeStartDate;
+        const mn = minimumBookableYmd;
+        if (!rs && !mn) return undefined;
+        if (!rs) return mn || undefined;
+        if (!mn) return rs;
+        return rs >= mn ? rs : mn;
+    }, [bookingKind, reservationLeadTimeExempt, rangeStartDate, minimumBookableYmd]);
+
+    const leadTimeViolationMessage = useMemo(() => {
+        if (!spaceIdVal || !selectedSpace || reservationLeadTimeExempt) {
+            return '';
+        }
+        let wallFields;
+        if (bookingKind === 'avr_range') {
+            wallFields = {
+                rangeStartDate,
+                rangeStartTime,
+                rangeEndDate,
+                rangeEndTime,
+            };
+        } else if (bookingKind === 'half_hour_details') {
+            wallFields = { date, rangeStartTime, rangeEndTime };
+        } else {
+            wallFields = { date, startTime, endTime };
+        }
+        const timeErr = validateWallClockWindowForKind(bookingKind, wallFields);
+        if (timeErr) {
+            return '';
+        }
+        const { start_at, end_at } = buildStartEndPayloadFromWallClock(bookingKind, wallFields);
+        if (standardUserBookingViolatesLeadTimeRules(start_at, end_at, policyClock)) {
+            return messageForLeadTimeViolation(start_at, end_at, policyClock);
+        }
+        return '';
+    }, [
+        spaceIdVal,
+        selectedSpace,
+        reservationLeadTimeExempt,
+        bookingKind,
+        rangeStartDate,
+        rangeStartTime,
+        rangeEndDate,
+        rangeEndTime,
+        date,
+        startTime,
+        endTime,
+        policyClock,
+    ]);
+
+    useEffect(() => {
+        if (reservationLeadTimeExempt) return;
+        const minY = getMinimumBookableManilaYmd(policyClock);
+        setDate((d) => (d && d < minY ? minY : d));
+        setRangeStartDate((rs) => (rs && rs < minY ? minY : rs));
+    }, [reservationLeadTimeExempt, policyClock]);
+
+    useEffect(() => {
+        if (reservationLeadTimeExempt) return;
+        const minY = getMinimumBookableManilaYmd(policyClock);
+        setRangeEndDate((re) => {
+            if (!re) return re;
+            let next = re < minY ? minY : re;
+            if (bookingKind === 'avr_range' && rangeStartDate && next < rangeStartDate) {
+                next = rangeStartDate;
+            }
+            return next;
+        });
+    }, [reservationLeadTimeExempt, policyClock, bookingKind, rangeStartDate]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -472,6 +592,11 @@ export default function ReservationForm() {
 
         if (operatingHoursError) {
             setError(operatingHoursError);
+            return;
+        }
+
+        if (leadTimeViolationMessage) {
+            setError(leadTimeViolationMessage);
             return;
         }
 
@@ -666,6 +791,8 @@ export default function ReservationForm() {
                 {error && <div className="text-red-700 text-sm bg-red-50 border border-red-200 p-3 rounded-lg">{error}</div>}
                 <p id="reserve-timezone-hint" className="text-xs text-slate-500 -mt-1 mb-1">
                     Date and times are in Philippines civil time ({BOOKING_TIMEZONE} / PHT), matching the server.
+                    {!reservationLeadTimeExempt &&
+                        ' Same-day booking is disabled; advance-booking cutoff at 4:30 PM Manila time may block reserving tomorrow.'}
                 </p>
                 {operatingHoursHint && (
                     <p className="text-xs text-slate-600 -mt-1 mb-1" role="status">
@@ -742,10 +869,22 @@ export default function ReservationForm() {
                             if (bookingKind === 'avr_range') setRangeStartDate(v);
                             else setDate(v);
                         }}
+                        min={minimumBookableYmd || undefined}
+                        max={maxBookableYmd || undefined}
                         required
                         className={ui.input}
                         aria-describedby="reserve-timezone-hint"
+                        title={
+                            bookingKind === 'avr_range'
+                                ? avrRangeStartPolicyReason || undefined
+                                : standardDetailPolicyDayReason || undefined
+                        }
                     />
+                    {maxBookingBlockMessage && (
+                        <p className="mt-2 text-sm font-medium text-red-700" role="alert">
+                            {maxBookingBlockMessage}
+                        </p>
+                    )}
                     {holidayBlockMessage && (
                         <p className="mt-2 text-sm font-medium text-red-700" role="alert">
                             {holidayBlockMessage}
@@ -764,7 +903,8 @@ export default function ReservationForm() {
                                     visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeStartTime}
                                     onChange={setRangeStartTime}
-                                    disabled={Boolean(holidayHit)}
+                                    disabled={Boolean(holidayHit) || Boolean(avrRangeStartPolicyReason)}
+                                    disabledReasonTitle={avrRangeStartPolicyReason || undefined}
                                     allowedHhmmList={avrStartAllowed}
                                 />
                             </fieldset>
@@ -775,9 +915,12 @@ export default function ReservationForm() {
                                     type="date"
                                     value={rangeEndDate}
                                     onChange={(e) => setRangeEndDate(e.target.value)}
+                                    min={avrRangeEndDateInputMin}
+                                    max={maxBookableYmd || undefined}
                                     required
                                     className={ui.input}
                                     aria-describedby="reserve-timezone-hint"
+                                    title={avrRangeEndPolicyReason || undefined}
                                 />
                             </div>
                         </div>
@@ -791,7 +934,8 @@ export default function ReservationForm() {
                                     visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeEndTime}
                                     onChange={setRangeEndTime}
-                                    disabled={Boolean(holidayHit)}
+                                    disabled={Boolean(holidayHit) || Boolean(avrRangeEndPolicyReason)}
+                                    disabledReasonTitle={avrRangeEndPolicyReason || undefined}
                                     allowedHhmmList={avrEndAllowed}
                                 />
                             </fieldset>
@@ -861,7 +1005,8 @@ export default function ReservationForm() {
                                     visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeStartTime}
                                     onChange={setRangeStartTime}
-                                    disabled={Boolean(holidayHit)}
+                                    disabled={Boolean(holidayHit) || Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={detailStartAllowed}
                                 />
                             </fieldset>
@@ -874,7 +1019,8 @@ export default function ReservationForm() {
                                     visibleFieldLabels={visibleReservationTimeLabels}
                                     value={rangeEndTime}
                                     onChange={setRangeEndTime}
-                                    disabled={Boolean(holidayHit)}
+                                    disabled={Boolean(holidayHit) || Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={detailEndAllowed}
                                 />
                             </fieldset>
@@ -943,7 +1089,8 @@ export default function ReservationForm() {
                                     visibleFieldLabels={visibleReservationTimeLabels}
                                     value={startTime}
                                     onChange={setStartTime}
-                                    disabled={Boolean(holidayHit)}
+                                    disabled={Boolean(holidayHit) || Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={standardStartAllowed}
                                 />
                             </fieldset>
@@ -956,7 +1103,8 @@ export default function ReservationForm() {
                                     visibleFieldLabels={visibleReservationTimeLabels}
                                     value={endTime}
                                     onChange={setEndTime}
-                                    disabled={Boolean(holidayHit)}
+                                    disabled={Boolean(holidayHit) || Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={standardEndAllowed}
                                 />
                             </fieldset>
@@ -981,7 +1129,8 @@ export default function ReservationForm() {
                         participantOverCapacity ||
                         Boolean(holidayHit) ||
                         Boolean(durationLimitError) ||
-                        Boolean(operatingHoursError)
+                        Boolean(operatingHoursError) ||
+                        Boolean(leadTimeViolationMessage)
                     }
                     className={ui.btnPrimaryFull}
                 >
@@ -990,6 +1139,11 @@ export default function ReservationForm() {
                 {operatingHoursError && !holidayHit && (
                     <p className="text-sm text-red-700" role="alert">
                         {operatingHoursError}
+                    </p>
+                )}
+                {leadTimeViolationMessage && (
+                    <p className="text-sm text-red-700" role="alert">
+                        {leadTimeViolationMessage}
                     </p>
                 )}
                 {durationLimitError && (

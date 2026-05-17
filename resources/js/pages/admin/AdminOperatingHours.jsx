@@ -8,6 +8,7 @@ export default function AdminOperatingHours() {
     const [dayEnd, setDayEnd] = useState('18:30');
     const [weekendStart, setWeekendStart] = useState('');
     const [weekendEnd, setWeekendEnd] = useState('');
+    const [maxBookingDate, setMaxBookingDate] = useState('');
     const [holidays, setHolidays] = useState([]);
     const [holidayName, setHolidayName] = useState('');
     const [holidayDate, setHolidayDate] = useState('');
@@ -25,6 +26,7 @@ export default function AdminOperatingHours() {
                 setDayEnd(doc?.hours?.day_end || '18:30');
                 setWeekendStart(doc?.hours?.weekend_day_start || '');
                 setWeekendEnd(doc?.hours?.weekend_day_end || '');
+                setMaxBookingDate(doc?.hours?.max_booking_date || '');
                 setHolidays(Array.isArray(doc?.holidays) ? doc.holidays : []);
             })
             .catch((err) => {
@@ -47,12 +49,14 @@ export default function AdminOperatingHours() {
                 day_end: dayEnd,
                 weekend_day_start: weekendStart || null,
                 weekend_day_end: weekendEnd || null,
+                max_booking_date: maxBookingDate || null,
             });
             const doc = unwrapData(data);
             setDayStart(doc?.hours?.day_start || dayStart);
             setDayEnd(doc?.hours?.day_end || dayEnd);
             setWeekendStart(doc?.hours?.weekend_day_start || '');
             setWeekendEnd(doc?.hours?.weekend_day_end || '');
+            setMaxBookingDate(doc?.hours?.max_booking_date || '');
             setBanner({ type: 'success', text: data.message || 'Saved.' });
         } catch (err) {
             const msg = err.response?.data?.message;
@@ -179,6 +183,23 @@ export default function AdminOperatingHours() {
                             Leave weekend times empty to use the same window every day. Set both to override hours on
                             Saturday and Sunday only.
                         </p>
+                        <div className="mt-6 border-t border-slate-200 pt-4">
+                            <h2 className="text-sm font-semibold text-slate-900 mb-3">Booking Window Limit</h2>
+                            <label className="block text-sm font-medium text-slate-700 mb-1" htmlFor="max-booking-date">
+                                Maximum allowable date for public reservations
+                            </label>
+                            <input
+                                id="max-booking-date"
+                                type="date"
+                                value={maxBookingDate}
+                                onChange={(e) => setMaxBookingDate(e.target.value)}
+                                className={ui.input}
+                                disabled={saving}
+                            />
+                            <p className="mt-1 text-xs text-slate-600">
+                                Leave empty for no limit. Users cannot browse or book dates after this day (Asia/Manila).
+                            </p>
+                        </div>
                         <button type="submit" disabled={saving} className={`${ui.btnPrimary} mt-4`}>
                             {saving ? 'Saving…' : 'Save operating hours'}
                         </button>

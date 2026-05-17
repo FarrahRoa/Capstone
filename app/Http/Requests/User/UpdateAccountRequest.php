@@ -4,6 +4,7 @@ namespace App\Http\Requests\User;
 
 use App\Models\User;
 use App\Support\AuthEmail;
+use App\Support\UserAffiliationChangePolicy;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -75,6 +76,18 @@ class UpdateAccountRequest extends FormRequest
             $rules['current_password'] = ['prohibited'];
             $rules['password'] = ['prohibited'];
             $rules['password_confirmation'] = ['prohibited'];
+
+            $type = $user->user_type ?? User::getUserTypeFromEmail($user->email);
+            if ($type === User::USER_TYPE_STUDENT) {
+                $rules['college_id'] = ['sometimes', 'integer', 'exists:colleges,id'];
+                $rules['office_id'] = ['prohibited'];
+            } elseif ($type === User::USER_TYPE_FACULTY_STAFF) {
+                $rules['office_id'] = ['sometimes', 'integer', 'exists:offices,id'];
+                $rules['college_id'] = ['prohibited'];
+            } else {
+                $rules['college_id'] = ['prohibited'];
+                $rules['office_id'] = ['prohibited'];
+            }
         }
 
         return $rules;
@@ -90,7 +103,9 @@ class UpdateAccountRequest extends FormRequest
             }
 
             $user->loadMissing('role');
-            if (!$user->isAdminPortalAccount()) {
+            if (! $user->isAdminPortalAccount()) {
+                $this->validateAffiliationChange($validator, $user);
+
                 return;
             }
 
@@ -120,5 +135,38 @@ class UpdateAccountRequest extends FormRequest
                 );
             }
         });
+    }
+
+    private function validateAffiliationChange($validator, User $user): void
+    {
+        if ($validator->errors()->isNotEmpty() || ! UserAffiliationChangePolicy::appliesTo($user)) {
+            return;
+        }
+
+        $type = $user->user_type ?? User::getUserTypeFromEmail($user->email);
+        $changed = false;
+
+        if ($type === User::USER_TYPE_STUDENT && $this->has('college_id')) {
+            $changed = UserAffiliationChangePolicy::studentCollegeChanged(
+                $user,
+                $this->input('college_id') !== null ? (int) $this->input('college_id') : null
+            );
+        }
+
+        if ($type === User::USER_TYPE_FACULTY_STAFF && $this->has('office_id')) {
+            $changed = UserAffiliationChangePolicy::employeeOfficeChanged(
+                $user,
+                $this->input('office_id') !== null ? (int) $this->input('office_id') : null
+            );
+        }
+
+        if (! $changed) {
+            return;
+        }
+
+        if (! UserAffiliationChangePolicy::canChangeAffiliation($user)) {
+            $field = $type === User::USER_TYPE_STUDENT ? 'college_id' : 'office_id';
+            $validator->errors()->add($field, UserAffiliationChangePolicy::BLOCKED_MESSAGE);
+        }
     }
 }

@@ -129,6 +129,7 @@ class PolicyController extends Controller
                 'day_end' => $hours['day_end'],
                 'weekend_day_start' => $hours['weekend_day_start'],
                 'weekend_day_end' => $hours['weekend_day_end'],
+                'max_booking_date' => $hours['max_booking_date'],
             ],
             'holidays' => Holiday::query()->orderBy('date')->orderBy('name')->get(['id', 'name', 'date', 'is_recurring']),
             'updated_at' => $doc->updated_at?->toIso8601String(),
@@ -142,6 +143,7 @@ class PolicyController extends Controller
             'day_end' => ['required', 'date_format:H:i'],
             'weekend_day_start' => ['nullable', 'date_format:H:i'],
             'weekend_day_end' => ['nullable', 'date_format:H:i'],
+            'max_booking_date' => ['nullable', 'date_format:Y-m-d'],
         ]);
 
         if (strcmp($data['day_end'], $data['day_start']) <= 0) {
@@ -175,6 +177,9 @@ class PolicyController extends Controller
         $weekendStart = ($ws !== null && $ws !== '') ? $ws : null;
         $weekendEnd = ($we !== null && $we !== '') ? $we : null;
 
+        $maxBookingDate = $data['max_booking_date'] ?? null;
+        $maxBookingDate = is_string($maxBookingDate) && $maxBookingDate !== '' ? $maxBookingDate : null;
+
         $doc = PolicyDocument::operatingHours();
         $doc->update([
             'content' => json_encode([
@@ -182,6 +187,7 @@ class PolicyController extends Controller
                 'day_end' => $data['day_end'],
                 'weekend_day_start' => $weekendStart,
                 'weekend_day_end' => $weekendEnd,
+                'max_booking_date' => $maxBookingDate,
             ], JSON_UNESCAPED_SLASHES),
         ]);
         $doc->refresh();
@@ -195,6 +201,7 @@ class PolicyController extends Controller
                 'day_end' => $decoded['day_end'],
                 'weekend_day_start' => $decoded['weekend_day_start'],
                 'weekend_day_end' => $decoded['weekend_day_end'],
+                'max_booking_date' => $decoded['max_booking_date'],
             ],
             'updated_at' => $doc->updated_at?->toIso8601String(),
         ]);

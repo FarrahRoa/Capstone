@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import { paginatorRows, unwrapData } from '../utils/apiEnvelope';
 import { getEventRequestTypeLabel, getReservationActionLabel, getReservationStatusLabel } from '../utils/reservationVocabulary';
 import { formatDisplayDate, formatDisplayTime, formatLogTime } from '../utils/timeDisplay';
@@ -20,6 +21,15 @@ import {
     resolveOperatingWindowForYmd,
 } from '../utils/operatingHours';
 import { BOOKING_TIMEZONE } from '../utils/timeDisplay';
+import { applyStudentRoleSpaceFilter } from '../utils/studentSpaceAccess';
+import {
+    exemptFromReservationLeadTime,
+    getMinimumBookableManilaYmd,
+    messageForLeadTimeViolation,
+    policyBlockReasonForManilaReservationDay,
+    standardUserBookingViolatesLeadTimeRules,
+} from '../utils/reservationLeadTimePolicy';
+import { useBookingPolicyClock } from '../utils/useBookingPolicyClock';
 import { ui } from '../theme';
 import HalfHourWallClockSelect from '../components/booking/HalfHourWallClockSelect';
 
@@ -56,6 +66,9 @@ function canCancelReservation(r) {
 }
 
 function EditReservationModal({ open, onClose, reservation, onSaved }) {
+    const { user } = useAuth();
+    const reservationLeadTimeExempt = exemptFromReservationLeadTime(user);
+    const policyClock = useBookingPolicyClock();
     const [spaces, setSpaces] = useState([]);
     const [spaceId, setSpaceId] = useState('');
     const [wc, setWc] = useState(() => ({ kind: 'standard', date: '', startTime: '09:00', endTime: '10:00' }));
@@ -81,10 +94,11 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
             .then(({ data }) => {
                 const list = unwrapData(data);
                 const raw = Array.isArray(list) ? list : [];
-                setSpaces(raw.filter((s) => !(s.type === 'confab' && !s.is_confab_pool)));
+                const visible = applyStudentRoleSpaceFilter(user, raw);
+                setSpaces(visible.filter((s) => !(s.type === 'confab' && !s.is_confab_pool)));
             })
             .catch(() => setSpaces([]));
-    }, [open]);
+    }, [open, user]);
 
     useEffect(() => {
         if (!open || !reservation) return;
@@ -181,6 +195,73 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
         return operatingHoursWallClockError(wc.kind, wc, operatingHoursConfig, buildStartEndPayloadFromWallClock);
     }, [wc, operatingHoursConfig]);
 
+    const minimumBookableYmd = useMemo(() => {
+        if (reservationLeadTimeExempt) return null;
+        return getMinimumBookableManilaYmd(policyClock);
+    }, [reservationLeadTimeExempt, policyClock]);
+
+    const standardDetailReservationDay = wc.kind !== 'avr_range' ? wc.date || '' : '';
+
+    const standardDetailPolicyDayReason = useMemo(() => {
+        if (reservationLeadTimeExempt || !standardDetailReservationDay) return null;
+        return policyBlockReasonForManilaReservationDay(standardDetailReservationDay, policyClock);
+    }, [reservationLeadTimeExempt, standardDetailReservationDay, policyClock]);
+
+    const avrRangeStartPolicyReason = useMemo(() => {
+        if (reservationLeadTimeExempt || wc.kind !== 'avr_range' || !wc.rangeStartDate) return null;
+        return policyBlockReasonForManilaReservationDay(wc.rangeStartDate, policyClock);
+    }, [reservationLeadTimeExempt, wc.kind, wc.rangeStartDate, policyClock]);
+
+    const avrRangeEndPolicyReason = useMemo(() => {
+        if (reservationLeadTimeExempt || wc.kind !== 'avr_range' || !wc.rangeEndDate) return null;
+        return policyBlockReasonForManilaReservationDay(wc.rangeEndDate, policyClock);
+    }, [reservationLeadTimeExempt, wc.kind, wc.rangeEndDate, policyClock]);
+
+    const avrRangeEndDateInputMin = useMemo(() => {
+        if (wc.kind !== 'avr_range') return undefined;
+        if (reservationLeadTimeExempt) return wc.rangeStartDate || undefined;
+        const rs = wc.rangeStartDate;
+        const mn = minimumBookableYmd;
+        if (!rs && !mn) return undefined;
+        if (!rs) return mn || undefined;
+        if (!mn) return rs;
+        return rs >= mn ? rs : mn;
+    }, [wc.kind, wc.rangeStartDate, reservationLeadTimeExempt, minimumBookableYmd]);
+
+    const leadTimeViolationMessage = useMemo(() => {
+        if (reservationLeadTimeExempt) return '';
+        if (validateWallClockWindowForKind(wc.kind, wc)) return '';
+        const { start_at, end_at } = buildStartEndPayloadFromWallClock(wc.kind, wc);
+        if (standardUserBookingViolatesLeadTimeRules(start_at, end_at, policyClock)) {
+            return messageForLeadTimeViolation(start_at, end_at, policyClock);
+        }
+        return '';
+    }, [wc, reservationLeadTimeExempt, policyClock]);
+
+    useEffect(() => {
+        if (!open || reservationLeadTimeExempt) return;
+        const minY = getMinimumBookableManilaYmd(policyClock);
+        setWc((p) => {
+            if (p.kind === 'avr_range') {
+                const rs = p.rangeStartDate && p.rangeStartDate < minY ? minY : p.rangeStartDate;
+                return { ...p, rangeStartDate: rs || p.rangeStartDate };
+            }
+            const day = p.date && p.date < minY ? minY : p.date;
+            return { ...p, date: day || p.date };
+        });
+    }, [open, reservationLeadTimeExempt, policyClock]);
+
+    useEffect(() => {
+        if (!open || reservationLeadTimeExempt || wc.kind !== 'avr_range') return;
+        const minY = getMinimumBookableManilaYmd(policyClock);
+        setWc((p) => {
+            if (!p.rangeEndDate) return p;
+            let re = p.rangeEndDate < minY ? minY : p.rangeEndDate;
+            if (p.rangeStartDate && re < p.rangeStartDate) re = p.rangeStartDate;
+            return { ...p, rangeEndDate: re };
+        });
+    }, [open, reservationLeadTimeExempt, policyClock, wc.kind]);
+
     const onSave = async () => {
         if (!reservation) return;
         setError('');
@@ -206,6 +287,11 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
 
         if (operatingHoursError) {
             setError(operatingHoursError);
+            return;
+        }
+
+        if (leadTimeViolationMessage) {
+            setError(leadTimeViolationMessage);
             return;
         }
 
@@ -320,7 +406,13 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                 const v = e.target.value;
                                 setWc((p) => (p.kind === 'avr_range' ? { ...p, rangeStartDate: v } : { ...p, date: v }));
                             }}
+                            min={minimumBookableYmd || undefined}
                             className={ui.input}
+                            title={
+                                wc.kind === 'avr_range'
+                                    ? avrRangeStartPolicyReason || undefined
+                                    : standardDetailPolicyDayReason || undefined
+                            }
                         />
                     </div>
 
@@ -333,6 +425,8 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                         idPrefix="edit-range-start"
                                         value={wc.rangeStartTime}
                                         onChange={(v) => setWc((p) => ({ ...p, rangeStartTime: v }))}
+                                        disabled={Boolean(avrRangeStartPolicyReason)}
+                                        disabledReasonTitle={avrRangeStartPolicyReason || undefined}
                                         allowedHhmmList={avrStartAllowed}
                                     />
                                 </div>
@@ -342,7 +436,9 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                         type="date"
                                         value={wc.rangeEndDate}
                                         onChange={(e) => setWc((p) => ({ ...p, rangeEndDate: e.target.value }))}
+                                        min={avrRangeEndDateInputMin}
                                         className={ui.input}
+                                        title={avrRangeEndPolicyReason || undefined}
                                     />
                                 </div>
                             </div>
@@ -352,6 +448,8 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-range-end"
                                     value={wc.rangeEndTime}
                                     onChange={(v) => setWc((p) => ({ ...p, rangeEndTime: v }))}
+                                    disabled={Boolean(avrRangeEndPolicyReason)}
+                                    disabledReasonTitle={avrRangeEndPolicyReason || undefined}
                                     allowedHhmmList={avrEndAllowed}
                                 />
                             </div>
@@ -364,6 +462,8 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-details-start"
                                     value={wc.rangeStartTime}
                                     onChange={(v) => setWc((p) => ({ ...p, rangeStartTime: v }))}
+                                    disabled={Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={detailStartAllowed}
                                 />
                             </div>
@@ -373,6 +473,8 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-details-end"
                                     value={wc.rangeEndTime}
                                     onChange={(v) => setWc((p) => ({ ...p, rangeEndTime: v }))}
+                                    disabled={Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={detailEndAllowed}
                                 />
                             </div>
@@ -385,6 +487,8 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-standard-start"
                                     value={wc.startTime}
                                     onChange={(v) => setWc((p) => ({ ...p, startTime: v }))}
+                                    disabled={Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={standardStartAllowed}
                                 />
                             </div>
@@ -394,6 +498,8 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                                     idPrefix="edit-standard-end"
                                     value={wc.endTime}
                                     onChange={(v) => setWc((p) => ({ ...p, endTime: v }))}
+                                    disabled={Boolean(standardDetailPolicyDayReason)}
+                                    disabledReasonTitle={standardDetailPolicyDayReason || undefined}
                                     allowedHhmmList={standardEndAllowed}
                                 />
                             </div>
@@ -405,10 +511,16 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
                         <span className="font-medium text-slate-700">:30</span>), matching new reservations.
                     </p>
 
+                    {leadTimeViolationMessage && (
+                        <p className="text-sm text-red-700" role="alert">
+                            {leadTimeViolationMessage}
+                        </p>
+                    )}
+
                     <button
                         type="button"
                         onClick={onSave}
-                        disabled={saving || Boolean(operatingHoursError)}
+                        disabled={saving || Boolean(operatingHoursError) || Boolean(leadTimeViolationMessage)}
                         className={ui.btnPrimaryFull}
                     >
                         {saving ? 'Saving…' : 'Save changes'}

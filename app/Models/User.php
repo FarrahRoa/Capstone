@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\AuthEmail;
+use App\Support\UserAffiliationChangePolicy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -114,6 +115,7 @@ class User extends Authenticatable
         'boardroom_eligible',
         'college_id',
         'office_id',
+        'last_affiliation_changed_at',
         'is_activated',
         'otp',
         'otp_hash',
@@ -142,6 +144,7 @@ class User extends Authenticatable
             'boardroom_eligible' => 'boolean',
             'otp_expires_at' => 'datetime',
             'profile_completed_at' => 'datetime',
+            'last_affiliation_changed_at' => 'datetime',
             'admin_invite_expires_at' => 'datetime',
             'admin_invited_at' => 'datetime',
             'admin_password_set_at' => 'datetime',
@@ -223,6 +226,12 @@ class User extends Authenticatable
         return $this->role && $this->role->isStudentAssistant();
     }
 
+    /** End-user student accounts (not faculty/staff, librarian, or student assistant). */
+    public function hasStudentRole(): bool
+    {
+        return $this->role && $this->role->slug === 'student';
+    }
+
     public function canManageReservations(): bool
     {
         return $this->canDo('reservation.create');
@@ -276,6 +285,11 @@ class User extends Authenticatable
             'boardroom_eligible' => (bool) $this->boardroom_eligible,
             'profile_complete' => $profileComplete,
             'requires_profile_completion' => (bool) $this->is_activated && !$profileComplete,
+            'last_affiliation_changed_at' => $this->last_affiliation_changed_at?->toIso8601String(),
+            'affiliation_change_eligible' => UserAffiliationChangePolicy::canChangeAffiliation($this),
+            'affiliation_next_change_on' => UserAffiliationChangePolicy::canChangeAffiliation($this)
+                ? null
+                : UserAffiliationChangePolicy::nextChangeAllowedOn($this)?->toDateString(),
         ];
     }
 
@@ -311,10 +325,14 @@ class User extends Authenticatable
             return null;
         }
 
+        if ($this->hasStudentRole()) {
+            return \App\Support\StudentSpaceAccess::blockedMessageForSpace($space);
+        }
+
         $userType = $this->user_type ?? self::getUserTypeFromEmail((string) $this->email);
         $spaceType = (string) ($space->type ?? '');
 
-        // Students: Confab only; Med Confab allowed for eligible medical students.
+        // Non-student-role accounts classified as students by email/domain.
         if ($userType === self::USER_TYPE_STUDENT) {
             if ($spaceType === Space::TYPE_CONFAB) {
                 return null;

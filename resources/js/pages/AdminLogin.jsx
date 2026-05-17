@@ -24,7 +24,7 @@ export default function AdminLogin() {
                 return;
             }
             login(data.token, data.user);
-            navigate('/', { replace: true });
+            navigate('/admin', { replace: true });
         } catch (err) {
             setError(err.response?.data?.message || 'Admin login failed.');
         } finally {

@@ -6,10 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Models\Holiday;
 use App\Models\PolicyDocument;
 use App\Support\ApiResponse;
+use App\Support\ReservationLeadTimePolicy;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 
 class PolicyController extends Controller
 {
+    /**
+     * Authoritative server instant for booking cutoff rules (Manila civil context).
+     */
+    public function bookingClock(): JsonResponse
+    {
+        $now = Carbon::now(ReservationLeadTimePolicy::TZ);
+
+        return ApiResponse::data([
+            'now_iso' => $now->toIso8601String(),
+            'timezone' => ReservationLeadTimePolicy::TZ,
+        ]);
+    }
+
     public function operatingHours(): JsonResponse
     {
         $doc = PolicyDocument::operatingHours();
@@ -27,10 +42,10 @@ class PolicyController extends Controller
                 'day_end' => $hours['day_end'],
                 'weekend_day_start' => $hours['weekend_day_start'],
                 'weekend_day_end' => $hours['weekend_day_end'],
+                'max_booking_date' => $hours['max_booking_date'],
             ],
             'holidays' => $holidays,
             'updated_at' => $doc->updated_at?->toIso8601String(),
         ]);
     }
 }
-

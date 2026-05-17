@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\ReservationVerificationMail;
 use App\Models\Reservation;
+use App\Services\ReservationReadableIdService;
 use App\Models\Role;
 use App\Models\Space;
 use App\Models\User;
@@ -26,6 +27,8 @@ class ConfabAssignmentWorkflowTest extends TestCase
         return User::factory()->create([
             'role_id' => $role->id,
             'is_activated' => true,
+            'user_type' => User::USER_TYPE_STUDENT,
+            'email' => 'student-confab-'.uniqid().'@my.xu.edu.ph',
         ]);
     }
 
@@ -86,6 +89,9 @@ class ConfabAssignmentWorkflowTest extends TestCase
         $this->assertNotNull($id);
         $row = Reservation::findOrFail($id);
         $this->assertSame($pool->id, (int) $row->space_id);
+        $this->assertSame('CS1', $row->reservation_number);
+        $this->assertSame(1, (int) $row->reservation_sequence);
+        $this->assertSame(ReservationReadableIdService::CATEGORY_CS, $row->reservation_category);
         Mail::assertSent(ReservationVerificationMail::class);
     }
 
@@ -159,6 +165,7 @@ class ConfabAssignmentWorkflowTest extends TestCase
             'status' => Reservation::STATUS_PENDING_APPROVAL,
             'purpose' => 'Queued confab',
         ]);
+        app(ReservationReadableIdService::class)->assignIfMissing($reservation->fresh(['user', 'space']));
 
         $response = $this->postJson("/api/admin/reservations/{$reservation->id}/approve", [
             'assigned_space_id' => $room->id,
@@ -169,7 +176,7 @@ class ConfabAssignmentWorkflowTest extends TestCase
         $reservation->refresh();
         $this->assertSame(Reservation::STATUS_APPROVED, $reservation->status);
         $this->assertSame($room->id, (int) $reservation->space_id);
-        $this->assertNotNull($reservation->reservation_number);
+        $this->assertSame('CS1', $reservation->reservation_number);
 
         Mail::assertSent(\App\Mail\ReservationApprovedMail::class);
     }

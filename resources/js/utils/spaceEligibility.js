@@ -1,3 +1,9 @@
+import {
+    getStudentRoleSpaceBlockMessage,
+    isStudentRoleUser,
+    studentRoleMayReserveSpace,
+} from './studentSpaceAccess';
+
 export const SPACE_TYPE_MEDICAL_CONFAB = 'medical_confab';
 export const SPACE_TYPE_BOARDROOM = 'boardroom';
 
@@ -21,6 +27,10 @@ function isStaffOrAdmin(user) {
 export function getSpaceIneligibilityMessage(space, user) {
     if (!space) return '';
     if (isStaffOrAdmin(user)) return '';
+
+    if (isStudentRoleUser(user)) {
+        return getStudentRoleSpaceBlockMessage(user, space);
+    }
 
     const userType = String(user?.user_type || '').toLowerCase();
 
@@ -53,6 +63,9 @@ export function getSpaceIneligibilityMessage(space, user) {
 
 export function isUserEligibleForSpace(user, space) {
     if (!space) return true;
+    if (isStudentRoleUser(user)) {
+        return studentRoleMayReserveSpace(space);
+    }
     return getSpaceIneligibilityMessage(space, user) === '';
 }
 

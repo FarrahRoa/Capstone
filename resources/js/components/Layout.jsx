@@ -1,6 +1,7 @@
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { getVisiblePrimaryNavItems } from '../config/primaryNavItems';
 
 const navItemClass = ({ isActive }) =>
     [
@@ -27,18 +28,7 @@ export default function Layout({ children }) {
     const accountRef = useRef(null);
     const navButtonRef = useRef(null);
     const navCloseButtonRef = useRef(null);
-    const canViewCalendar = hasPermission('calendar.view');
-    const canCreateReservation = hasPermission('reservation.create');
-    const canViewOwnReservations = hasPermission('reservation.view_own');
     const canViewReservationQueue = hasPermission('reservation.view_all');
-    const canViewReports = hasPermission('reports.view');
-    const canManageUsers = hasPermission('users.manage');
-    const canManageSpaces = hasPermission('spaces.manage');
-    const canManagePolicies = hasPermission('policies.manage');
-    const canManageDeanEmails = canManagePolicies;
-    const canManageOrganizations = canManageUsers;
-    const canManageOperatingHours = canManagePolicies;
-    const canCloudSync = hasPermission('system.cloud_sync');
 
     const handleLogout = () => {
         logout();
@@ -90,86 +80,18 @@ export default function Layout({ children }) {
 
     const closeMobileNav = () => setNavOpen(false);
 
-    const isAdminRoute = location.pathname.startsWith('/admin');
     const isQueueViewOnly = canViewReservationQueue && !hasPermission('reservation.approve');
-    const forceHamburgerNav = isAdminRoute;
 
-    const hasPrimaryNav =
-        canViewCalendar ||
-        canCreateReservation ||
-        canViewOwnReservations ||
-        canViewReservationQueue ||
-        canViewReports ||
-        canManageSpaces ||
-        canManageUsers ||
-        canManagePolicies ||
-        canManageOrganizations ||
-        canManageOperatingHours ||
-        canManageDeanEmails ||
-        canCloudSync;
+    const visiblePrimaryNavItems = getVisiblePrimaryNavItems(hasPermission);
+    const hasPrimaryNav = visiblePrimaryNavItems.length > 0;
 
     const navLinkItems = (itemClass, onNavigate) => (
         <>
-            {canViewCalendar && (
-                <NavLink to="/calendar" className={itemClass} onClick={onNavigate}>
-                    Calendar
+            {visiblePrimaryNavItems.map((item) => (
+                <NavLink key={item.to} to={item.to} className={itemClass} onClick={onNavigate}>
+                    {item.label}
                 </NavLink>
-            )}
-            {canCreateReservation && (
-                <NavLink to="/reserve" className={itemClass} onClick={onNavigate}>
-                    New Reservation
-                </NavLink>
-            )}
-            {canViewOwnReservations && (
-                <NavLink to="/my-reservations" className={itemClass} onClick={onNavigate}>
-                    My Reservations
-                </NavLink>
-            )}
-            {canViewReservationQueue && (
-                <NavLink to="/admin/reservations" className={itemClass} onClick={onNavigate}>
-                    Reservation Queue
-                </NavLink>
-            )}
-            {canViewReports && (
-                <NavLink to="/admin/reports" className={itemClass} onClick={onNavigate}>
-                    Reports
-                </NavLink>
-            )}
-            {canManageSpaces && (
-                <NavLink to="/admin/spaces" className={itemClass} onClick={onNavigate}>
-                    Spaces
-                </NavLink>
-            )}
-            {canManageUsers && (
-                <NavLink to="/admin/users" className={itemClass} onClick={onNavigate}>
-                    User Management
-                </NavLink>
-            )}
-            {canManagePolicies && (
-                <NavLink to="/admin/policies" className={itemClass} onClick={onNavigate}>
-                    Guidelines
-                </NavLink>
-            )}
-            {canManageOperatingHours && (
-                <NavLink to="/admin/operating-hours" className={itemClass} onClick={onNavigate}>
-                    Operating Hours
-                </NavLink>
-            )}
-            {canManageDeanEmails && (
-                <NavLink to="/admin/dean-emails" className={itemClass} onClick={onNavigate}>
-                    Dean Emails
-                </NavLink>
-            )}
-            {canManageOrganizations && (
-                <NavLink to="/admin/organizations" className={itemClass} onClick={onNavigate}>
-                    Colleges & Offices
-                </NavLink>
-            )}
-            {canCloudSync && (
-                <NavLink to="/admin/cloud-sync" className={itemClass} onClick={onNavigate}>
-                    Cloud sync
-                </NavLink>
-            )}
+            ))}
         </>
     );
 
@@ -209,28 +131,18 @@ export default function Layout({ children }) {
                 <div className="mx-auto w-full min-w-0 max-w-[100vw] px-3 sm:px-5 lg:px-8 xl:px-10">
                     <div className="flex min-h-[3.5rem] items-center gap-2 py-2 sm:gap-4">
                         <div className="flex min-h-0 min-w-0 flex-1 items-center gap-2 sm:gap-3 xl:gap-4">
-                            {hasPrimaryNav && forceHamburgerNav && (
-                                <div className="shrink-0">
-                                    <NavMenuButton />
-                                </div>
-                            )}
                             <Link
                                 to="/"
                                 className="shrink-0 font-serif font-semibold text-sm text-white tracking-tight border-r border-white/25 pr-2 sm:pr-3 sm:text-base"
                             >
                                 XU Library
                             </Link>
-                            <div
-                                className={[
-                                    'hidden min-h-0 min-w-0 flex-1 items-center gap-x-1 py-0.5 sm:gap-x-1.5',
-                                    forceHamburgerNav ? '' : '2xl:flex 2xl:flex-wrap 2xl:content-center 2xl:gap-x-2 2xl:gap-y-1',
-                                ].join(' ')}
-                            >
-                                {!forceHamburgerNav && navLinkItems(navItemClass, undefined)}
+                            <div className="hidden min-h-0 min-w-0 flex-1 items-center gap-x-1 py-0.5 sm:gap-x-1.5 2xl:flex 2xl:flex-wrap 2xl:content-center 2xl:gap-x-2 2xl:gap-y-1">
+                                {navLinkItems(navItemClass, undefined)}
                             </div>
                         </div>
                         <div className="relative z-10 flex shrink-0 items-center gap-2 border-l border-white/20 bg-xu-primary pl-2 sm:gap-2.5 sm:pl-4">
-                            {hasPrimaryNav && !forceHamburgerNav && <NavMenuButton className="2xl:hidden" />}
+                            {hasPrimaryNav && <NavMenuButton className="2xl:hidden" />}
                             <div className="relative" ref={accountRef}>
                                 <button
                                     type="button"

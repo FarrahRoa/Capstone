@@ -15,7 +15,9 @@ use App\Models\Role;
 use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Support\ApiResponse;
+use App\Support\OtpAttemptLimiter;
 use App\Support\RegistrationDisplayName;
+use App\Support\UserAffiliationChangePolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
@@ -38,9 +40,35 @@ class AuthController extends Controller
         return bin2hex(random_bytes(24));
     }
 
+    private const OTP_TTL_SECONDS = 60;
+
     private function generateOtp(): string
     {
         return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    }
+
+    private function otpLockoutResponse(string $email): ?JsonResponse
+    {
+        if (! OtpAttemptLimiter::isLockedOut($email)) {
+            return null;
+        }
+
+        return response()->json(['message' => OtpAttemptLimiter::LOCKOUT_MESSAGE], 429);
+    }
+
+    /**
+     * @return array{0: string, 1: User}
+     */
+    private function issueOtpToUser(User $user): array
+    {
+        $otp = $this->generateOtp();
+        $user->update([
+            'otp' => null,
+            'otp_hash' => Hash::make($otp),
+            'otp_expires_at' => now()->addSeconds(self::OTP_TTL_SECONDS),
+        ]);
+
+        return [$otp, $user];
     }
 
     private function trustedDeviceCookieName(): string
@@ -164,13 +192,11 @@ class AuthController extends Controller
         }
 
         // Untrusted device (or expired / invalid token): send OTP.
-        $otp = $this->generateOtp();
-        $user->update([
-            // Phase 1 hardening: do not store raw OTP.
-            'otp' => null,
-            'otp_hash' => Hash::make($otp),
-            'otp_expires_at' => now()->addMinutes(10),
-        ]);
+        if ($lockout = $this->otpLockoutResponse($email)) {
+            return $lockout;
+        }
+
+        [$otp, $user] = $this->issueOtpToUser($user);
         try {
             Mail::to($user->email)->send(new OtpMail($otp));
         } catch (Throwable $e) {
@@ -231,19 +257,35 @@ class AuthController extends Controller
 
     public function verifyOtp(VerifyOtpRequest $request): JsonResponse
     {
-        $user = User::findByNormalizedEmail($request->input('email'));
+        $email = AuthEmail::normalize($request->input('email'));
+        if ($lockout = $this->otpLockoutResponse($email)) {
+            return $lockout;
+        }
+
+        $user = User::findByNormalizedEmail($email);
         if (!$user) {
             return response()->json(['message' => 'User not found.'], 404);
         }
         if (!$user->otp_hash) {
+            OtpAttemptLimiter::recordAttempt($email);
+
             return response()->json(['message' => 'Invalid OTP.'], 422);
         }
-        if ($user->otp_expires_at && $user->otp_expires_at->isPast()) {
+        if ($user->otp_expires_at && now()->greaterThan($user->otp_expires_at)) {
+            OtpAttemptLimiter::recordAttempt($email);
+
             return response()->json(['message' => 'OTP has expired.'], 422);
         }
         if (!Hash::check((string) $request->input('otp'), $user->otp_hash)) {
+            OtpAttemptLimiter::recordAttempt($email);
+            if (OtpAttemptLimiter::isLockedOut($email)) {
+                return response()->json(['message' => OtpAttemptLimiter::LOCKOUT_MESSAGE], 429);
+            }
+
             return response()->json(['message' => 'Invalid OTP.'], 422);
         }
+
+        OtpAttemptLimiter::clear($email);
         $user->update([
             'is_activated' => true,
             'otp' => null,
@@ -275,17 +317,22 @@ class AuthController extends Controller
 
     public function resendOtp(ResendOtpRequest $request): JsonResponse
     {
-        $user = User::findByNormalizedEmail($request->input('email'));
+        $email = AuthEmail::normalize($request->input('email'));
+        if ($lockout = $this->otpLockoutResponse($email)) {
+            return $lockout;
+        }
+
+        $user = User::findByNormalizedEmail($email);
         if (!$user) {
             return response()->json(['message' => 'Invalid request.'], 422);
         }
-        $otp = $this->generateOtp();
-        $user->update([
-            // Phase 1 hardening: resend invalidates previous hash by overwriting it.
-            'otp' => null,
-            'otp_hash' => Hash::make($otp),
-            'otp_expires_at' => now()->addMinutes(10),
-        ]);
+
+        OtpAttemptLimiter::recordAttempt($email);
+        if (OtpAttemptLimiter::isLockedOut($email)) {
+            return response()->json(['message' => OtpAttemptLimiter::LOCKOUT_MESSAGE], 429);
+        }
+
+        [$otp, $user] = $this->issueOtpToUser($user);
         try {
             Mail::to($user->email)->send(new OtpMail($otp));
         } catch (Throwable $e) {
@@ -302,7 +349,11 @@ class AuthController extends Controller
             ], 503);
         }
 
-        return response()->json(['message' => 'OTP resent to your email.']);
+        return response()->json([
+            'message' => 'OTP resent to your email.',
+            'expires_in_seconds' => self::OTP_TTL_SECONDS,
+            'resend_cooldown_seconds' => 30,
+        ]);
     }
 
     public function me(Request $request): JsonResponse
@@ -424,6 +475,47 @@ class AuthController extends Controller
             }
         } else {
             $data['mobile_number'] = trim((string) $request->input('mobile_number'));
+
+            $affiliationChanged = false;
+            if ($request->has('college_id')) {
+                $resolved = UserAffiliationChangePolicy::resolveAffiliationUpdate(
+                    $user,
+                    (int) $request->input('college_id'),
+                    null
+                );
+                if ($resolved === null) {
+                    return response()->json([
+                        'message' => 'Invalid college selection.',
+                        'errors' => ['college_id' => ['Select a valid college.']],
+                    ], 422);
+                }
+                if (UserAffiliationChangePolicy::studentCollegeChanged($user, $resolved['college_id'])) {
+                    $data = array_merge($data, $resolved);
+                    $affiliationChanged = true;
+                }
+            }
+
+            if ($request->has('office_id')) {
+                $resolved = UserAffiliationChangePolicy::resolveAffiliationUpdate(
+                    $user,
+                    null,
+                    (int) $request->input('office_id')
+                );
+                if ($resolved === null) {
+                    return response()->json([
+                        'message' => 'Invalid office selection.',
+                        'errors' => ['office_id' => ['Select a valid office/department.']],
+                    ], 422);
+                }
+                if (UserAffiliationChangePolicy::employeeOfficeChanged($user, $resolved['office_id'])) {
+                    $data = array_merge($data, $resolved);
+                    $affiliationChanged = true;
+                }
+            }
+
+            if ($affiliationChanged) {
+                $data['last_affiliation_changed_at'] = now();
+            }
         }
 
         $user->update($data);

@@ -4,6 +4,8 @@ import api from './api';
 import { ui } from './theme';
 const xuLogotypeUrl = '/2023%20XU%20Logotype%20Revision%20V2%20Stacked_Full%20Color.png';
 
+const ADMIN_HOME = '/admin';
+
 function AdminLoginStandalone() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -12,8 +14,7 @@ function AdminLoginStandalone() {
 
     const alreadySignedIn = useMemo(() => Boolean(localStorage.getItem('token')), []);
     if (alreadySignedIn) {
-        // Keep behavior simple and consistent with the SPA.
-        window.location.replace('/');
+        window.location.replace(ADMIN_HOME);
         return null;
     }
 
@@ -29,7 +30,7 @@ function AdminLoginStandalone() {
             }
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
-            window.location.assign('/');
+            window.location.assign(ADMIN_HOME);
         } catch (err) {
             setError(err.response?.data?.message || 'Admin login failed.');
         } finally {
@@ -103,4 +104,3 @@ createRoot(rootEl).render(
         <AdminLoginStandalone />
     </React.StrictMode>
 );
-

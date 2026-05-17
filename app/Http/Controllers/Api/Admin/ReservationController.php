@@ -10,6 +10,7 @@ use App\Http\Requests\Admin\RejectReservationRequest;
 use App\Mail\Reservation\ReservationApprovedMail;
 use App\Mail\Reservation\ReservationRejectedMail;
 use App\Models\Reservation;
+use App\Services\ReservationReadableIdService;
 use App\Models\ReservationLog;
 use App\Models\Space;
 use App\Services\ReservationGlobalOverrideService;
@@ -17,7 +18,6 @@ use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -137,16 +137,16 @@ class ReservationController extends Controller
                         ]);
                     }
 
-                    $reservationNumber = 'RES-' . strtoupper(Str::random(8));
                     $logNotes = trim(($notes ? $notes.' ' : '').'Assigned room: '.$target->name);
 
                     $reservation->update([
                         'space_id' => $assignedId,
                         'status' => Reservation::STATUS_APPROVED,
-                        'reservation_number' => $reservationNumber,
                         'approved_by' => $request->user()->id,
                         'approved_at' => now(),
                     ]);
+
+                    app(ReservationReadableIdService::class)->assignIfMissing($reservation);
 
                     ReservationLog::create([
                         'reservation_id' => $reservation->id,
@@ -163,13 +163,13 @@ class ReservationController extends Controller
                 ], 422);
             }
         } else {
-            $reservationNumber = 'RES-' . strtoupper(Str::random(8));
             $reservation->update([
                 'status' => Reservation::STATUS_APPROVED,
-                'reservation_number' => $reservationNumber,
                 'approved_by' => $request->user()->id,
                 'approved_at' => now(),
             ]);
+
+            app(ReservationReadableIdService::class)->assignIfMissing($reservation);
             ReservationLog::create([
                 'reservation_id' => $reservation->id,
                 'actor_user_id' => $request->user()->id,

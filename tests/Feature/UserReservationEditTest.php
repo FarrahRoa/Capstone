@@ -170,7 +170,7 @@ class UserReservationEditTest extends TestCase
         $this->assertSame(Reservation::STATUS_PENDING_APPROVAL, $row->status);
         $this->assertNull($row->approved_by);
         $this->assertNull($row->approved_at);
-        $this->assertNull($row->reservation_number);
+        $this->assertSame('RES-TEST1234', $row->reservation_number);
     }
 
     public function test_user_cannot_edit_cancelled_or_rejected_or_past_reservation(): void

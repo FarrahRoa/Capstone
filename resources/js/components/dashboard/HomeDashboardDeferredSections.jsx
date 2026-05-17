@@ -1,9 +1,14 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api';
 import { paginatorRows, unwrapData } from '../../utils/apiEnvelope';
 import DeferredMount from '../DeferredMount';
 import { isAdminScheduleViewer } from '../../utils/isAdminScheduleViewer';
+import {
+    applyStudentRoleSpaceFilter,
+    filterSpacesForStudentShowcase,
+    isStudentRoleUser,
+} from '../../utils/studentSpaceAccess';
 import { ui } from '../../theme';
 
 const BookingCalendar = lazy(() => import('../booking/BookingCalendar'));
@@ -21,6 +26,7 @@ export default function HomeDashboardDeferredSections({
     statsError,
 }) {
     const [spaces, setSpaces] = useState([]);
+    const [studentShowcaseSpaces, setStudentShowcaseSpaces] = useState([]);
     const [spacesLoadError, setSpacesLoadError] = useState(false);
     const [scheduleMounted, setScheduleMounted] = useState(false);
     const [adminPanelsMounted, setAdminPanelsMounted] = useState(false);
@@ -34,22 +40,56 @@ export default function HomeDashboardDeferredSections({
 
     const adminSchedule = isAdminScheduleViewer(user, hasPermission);
 
+    const calendarSpaces = useMemo(() => {
+        if (!isStudentRoleUser(user)) {
+            return spaces;
+        }
+        return applyStudentRoleSpaceFilter(user, spaces);
+    }, [user, spaces]);
+
+    const showcaseSpacesForCalendar = useMemo(() => {
+        if (!isStudentRoleUser(user)) {
+            return undefined;
+        }
+        return studentShowcaseSpaces;
+    }, [user, studentShowcaseSpaces]);
+
     useEffect(() => {
         if (!canCalendar || !scheduleMounted) {
             setSpaces([]);
+            setStudentShowcaseSpaces([]);
             return;
         }
-        api.get('/spaces', { params: adminSchedule ? { operational: 1 } : {} })
-            .then(({ data }) => {
-                const list = unwrapData(data);
-                setSpaces(Array.isArray(list) ? list : []);
+
+        const student = isStudentRoleUser(user);
+        const baseParams = adminSchedule ? { operational: 1 } : {};
+
+        const requests = [
+            api.get('/spaces', { params: baseParams }),
+            student ? api.get('/spaces', { params: { ...baseParams, showcase: 1 } }) : Promise.resolve(null),
+        ];
+
+        Promise.all(requests)
+            .then(([spacesRes, showcaseRes]) => {
+                const list = unwrapData(spacesRes?.data);
+                const raw = Array.isArray(list) ? list : [];
+                setSpaces(raw);
+
+                if (student && showcaseRes) {
+                    const showcaseList = unwrapData(showcaseRes.data);
+                    const showcaseRaw = Array.isArray(showcaseList) ? showcaseList : [];
+                    setStudentShowcaseSpaces(filterSpacesForStudentShowcase(user, showcaseRaw));
+                } else {
+                    setStudentShowcaseSpaces([]);
+                }
                 setSpacesLoadError(false);
             })
             .catch(() => {
                 setSpaces([]);
+                setStudentShowcaseSpaces([]);
                 setSpacesLoadError(true);
             });
-    }, [canCalendar, adminSchedule, scheduleMounted]);
+    }, [canCalendar, adminSchedule, scheduleMounted, user]);
 
     useEffect(() => {
         if (!canReserve) {
@@ -203,7 +243,14 @@ export default function HomeDashboardDeferredSections({
                         }
                     >
                         <p className="text-sm text-slate-600 mb-5 max-w-3xl leading-relaxed">{scheduleIntro.body}</p>
-                        <BookingCalendar user={user} spaces={spaces} spacesLoadError={spacesLoadError} embedded />
+                        <BookingCalendar
+                            user={user}
+                            spaces={calendarSpaces}
+                            showcaseSpaces={showcaseSpacesForCalendar}
+                            spacesLoadError={spacesLoadError}
+                            embedded
+                            userDashboardEmbedded
+                        />
                     </Suspense>
                 </DeferredMount>
             )}

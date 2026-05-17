@@ -11,11 +11,11 @@ return new class extends Migration
         Schema::create('reservation_override_logs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('reservation_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('admin_user_id')->constrained('users')->nullOnDelete();
+            $table->foreignId('admin_user_id')->constrained('users')->restrictOnDelete();
             $table->foreignId('previous_space_id')->nullable()->constrained('spaces')->nullOnDelete();
             $table->dateTime('previous_start_at');
             $table->dateTime('previous_end_at');
-            $table->foreignId('new_space_id')->constrained('spaces');
+            $table->foreignId('new_space_id')->constrained('spaces')->restrictOnDelete();
             $table->dateTime('new_start_at');
             $table->dateTime('new_end_at');
             $table->text('reason');

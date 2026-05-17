@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { unwrapData } from '../utils/apiEnvelope';
+import { formatAffiliationNextChangeLabel } from '../utils/affiliationChangePolicy';
 import { ui } from '../theme';
 
 function isAdminPortalUser(user) {
@@ -8,12 +10,21 @@ function isAdminPortalUser(user) {
     return slug === 'admin' || slug === 'librarian' || slug === 'student_assistant';
 }
 
+function isAffiliationManagedUser(user) {
+    return user?.user_type === 'student' || user?.user_type === 'faculty_staff';
+}
+
 export default function AccountSettings() {
     const { user, refreshUser } = useAuth();
     const adminPortal = isAdminPortalUser(user);
+    const affiliationManaged = isAffiliationManagedUser(user);
     const [name, setName] = useState(user?.name || '');
     const [email, setEmail] = useState(user?.email || '');
     const [mobileNumber, setMobileNumber] = useState(user?.mobile_number || '');
+    const [collegeId, setCollegeId] = useState(user?.college_id ? String(user.college_id) : '');
+    const [officeId, setOfficeId] = useState(user?.office_id ? String(user.office_id) : '');
+    const [colleges, setColleges] = useState([]);
+    const [offices, setOffices] = useState([]);
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,10 +36,28 @@ export default function AccountSettings() {
         setName(user?.name || '');
         setEmail(user?.email || '');
         setMobileNumber(user?.mobile_number || '');
+        setCollegeId(user?.college_id ? String(user.college_id) : '');
+        setOfficeId(user?.office_id ? String(user.office_id) : '');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
-    }, [user?.name, user?.email, user?.mobile_number]);
+    }, [user?.name, user?.email, user?.mobile_number, user?.college_id, user?.office_id]);
+
+    useEffect(() => {
+        if (!affiliationManaged) {
+            return;
+        }
+        api.get('/affiliations')
+            .then(({ data }) => {
+                const payload = unwrapData(data);
+                setColleges(Array.isArray(payload?.colleges) ? payload.colleges : []);
+                setOffices(Array.isArray(payload?.offices) ? payload.offices : []);
+            })
+            .catch(() => {
+                setColleges([]);
+                setOffices([]);
+            });
+    }, [affiliationManaged]);
 
     const emailChanged = useMemo(() => {
         const a = (email || '').trim().toLowerCase();
@@ -39,6 +68,29 @@ export default function AccountSettings() {
     const wantsPasswordChange = useMemo(() => (newPassword || '').trim().length > 0, [newPassword]);
 
     const needsCurrentPassword = adminPortal && (emailChanged || wantsPasswordChange);
+
+    const affiliationEligible = user?.affiliation_change_eligible !== false;
+    const affiliationOptions = user?.user_type === 'student' ? colleges : offices;
+    const affiliationValue = user?.user_type === 'student' ? collegeId : officeId;
+    const affiliationLabel = user?.user_type === 'student' ? 'College' : 'Department/Office';
+
+    const affiliationNextChangeLabel = useMemo(
+        () => formatAffiliationNextChangeLabel(user?.affiliation_next_change_on),
+        [user?.affiliation_next_change_on]
+    );
+
+    const affiliationChanged = useMemo(() => {
+        if (!affiliationManaged || !affiliationEligible) {
+            return false;
+        }
+        if (user?.user_type === 'student') {
+            return String(user?.college_id || '') !== String(collegeId || '');
+        }
+        if (user?.user_type === 'faculty_staff') {
+            return String(user?.office_id || '') !== String(officeId || '');
+        }
+        return false;
+    }, [affiliationManaged, affiliationEligible, user, collegeId, officeId]);
 
     const typeLabel = useMemo(() => {
         if (adminPortal) {
@@ -51,7 +103,9 @@ export default function AccountSettings() {
 
     const helpText = adminPortal
         ? 'Update your name, email, or password. Your role is read-only. Changing your email or setting a new password requires your current password.'
-        : 'Update your name and mobile number. Email, role, and affiliation are read-only.';
+        : affiliationManaged
+          ? 'Update your name, mobile number, and college or office (once per month). Email and role are read-only.'
+          : 'Update your name and mobile number. Email, role, and affiliation are read-only.';
 
     const firstErrorLine = (err) => {
         const errors = err.response?.data?.errors;
@@ -85,6 +139,11 @@ export default function AccountSettings() {
                 : {
                       name,
                       mobile_number: mobileNumber,
+                      ...(affiliationManaged && affiliationEligible && affiliationChanged
+                          ? user?.user_type === 'student'
+                              ? { college_id: collegeId ? Number(collegeId) : null }
+                              : { office_id: officeId ? Number(officeId) : null }
+                          : {}),
                   };
             await api.patch('/me/account', payload);
             await refreshUser();
@@ -127,12 +186,6 @@ export default function AccountSettings() {
                         <p className={ui.sectionLabel}>Role</p>
                         <p className="mt-1 text-sm text-slate-800">{typeLabel}</p>
                     </div>
-                    {!adminPortal && user?.college_office && (
-                        <div>
-                            <p className={ui.sectionLabel}>{user?.user_type === 'student' ? 'College' : 'Department/Office'}</p>
-                            <p className="mt-1 text-sm text-slate-800">{user.college_office}</p>
-                        </div>
-                    )}
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -218,6 +271,41 @@ export default function AccountSettings() {
                                 className={ui.input}
                                 placeholder="e.g. 09171234567"
                             />
+                        </div>
+                    )}
+
+                    {affiliationManaged && (
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">{affiliationLabel}</label>
+                            <select
+                                value={affiliationValue}
+                                onChange={(e) => {
+                                    if (user?.user_type === 'student') {
+                                        setCollegeId(e.target.value);
+                                    } else {
+                                        setOfficeId(e.target.value);
+                                    }
+                                }}
+                                disabled={!affiliationEligible}
+                                required
+                                className={`${ui.input} ${!affiliationEligible ? 'cursor-not-allowed bg-slate-100 text-slate-600' : ''}`}
+                            >
+                                <option value="">Select {affiliationLabel.toLowerCase()}</option>
+                                {affiliationOptions.map((row) => (
+                                    <option key={row.id} value={String(row.id)}>
+                                        {row.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {!affiliationEligible && affiliationNextChangeLabel ? (
+                                <p className="mt-2 text-xs text-slate-600" role="status">
+                                    You can change this again on {affiliationNextChangeLabel}.
+                                </p>
+                            ) : (
+                                <p className="mt-1 text-xs text-slate-500">
+                                    You may update your {affiliationLabel.toLowerCase()} once every month.
+                                </p>
+                            )}
                         </div>
                     )}
 

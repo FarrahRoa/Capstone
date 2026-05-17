@@ -55,6 +55,8 @@ class AdminReservationOverrideTest extends TestCase
         $user = User::factory()->create([
             'role_id' => $role->id,
             'is_activated' => true,
+            'user_type' => User::USER_TYPE_FACULTY_STAFF,
+            'email' => 'faculty-override-'.uniqid().'@xu.edu.ph',
         ]);
 
         $space = $this->makeSpace();
@@ -98,7 +100,7 @@ class AdminReservationOverrideTest extends TestCase
         $reservation->refresh();
         $this->assertSame(Reservation::STATUS_OVERRIDDEN, $reservation->status);
         $this->assertSame($target->id, (int) $reservation->space_id);
-        $this->assertNotNull($reservation->reservation_number);
+        $this->assertSame('1AVR', $reservation->reservation_number);
         $this->assertSame($admin->id, (int) $reservation->overridden_by);
         $this->assertNotNull($reservation->overridden_at);
         $this->assertSame('Approved via global override', $reservation->override_reason);

@@ -180,6 +180,7 @@ class Reservation extends Model
 
     protected $fillable = [
         'user_id', 'space_id', 'start_at', 'end_at', 'status', 'reservation_number',
+        'reservation_sequence', 'reservation_category',
         'purpose', 'event_title', 'event_description', 'participant_count', 'event_request_type',
         'verification_token', 'verification_expires_at', 'verified_at',
         'approved_by', 'approved_at', 'rejected_reason',

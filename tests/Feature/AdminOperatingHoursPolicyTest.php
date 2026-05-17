@@ -34,7 +34,9 @@ class AdminOperatingHoursPolicyTest extends TestCase
         $get = $this->getJson('/api/admin/policies/operating-hours');
         $get->assertOk();
         $get->assertJsonPath('data.slug', PolicyDocument::SLUG_OPERATING_HOURS);
-        $get->assertJsonStructure(['data' => ['hours' => ['day_start', 'day_end', 'weekend_day_start', 'weekend_day_end']]]);
+        $get->assertJsonStructure([
+            'data' => ['hours' => ['day_start', 'day_end', 'weekend_day_start', 'weekend_day_end', 'max_booking_date']],
+        ]);
 
         $put = $this->putJson('/api/admin/policies/operating-hours', [
             'day_start' => '08:00',
@@ -50,6 +52,32 @@ class AdminOperatingHoursPolicyTest extends TestCase
         $payload = json_decode((string) $doc->content, true);
         $this->assertSame('08:00', $payload['day_start'] ?? null);
         $this->assertSame('18:00', $payload['day_end'] ?? null);
+    }
+
+    public function test_admin_can_set_max_booking_date(): void
+    {
+        $admin = $this->makeUserWithRole('admin', 'Admin');
+        Sanctum::actingAs($admin);
+
+        $put = $this->putJson('/api/admin/policies/operating-hours', [
+            'day_start' => '08:00',
+            'day_end' => '18:00',
+            'max_booking_date' => '2026-07-31',
+        ]);
+        $put->assertOk();
+        $put->assertJsonPath('data.hours.max_booking_date', '2026-07-31');
+
+        $doc = PolicyDocument::operatingHours()->fresh();
+        $payload = json_decode((string) $doc->content, true);
+        $this->assertSame('2026-07-31', $payload['max_booking_date'] ?? null);
+
+        $clear = $this->putJson('/api/admin/policies/operating-hours', [
+            'day_start' => '08:00',
+            'day_end' => '18:00',
+            'max_booking_date' => null,
+        ]);
+        $clear->assertOk();
+        $clear->assertJsonPath('data.hours.max_booking_date', null);
     }
 
     public function test_invalid_time_range_is_rejected(): void

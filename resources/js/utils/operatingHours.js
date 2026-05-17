@@ -6,6 +6,7 @@ export const DEFAULT_OPERATING_HOURS_SHAPE = {
     day_end: '18:30',
     weekend_day_start: null,
     weekend_day_end: null,
+    max_booking_date: null,
 };
 
 function pad2(n) {
@@ -14,7 +15,7 @@ function pad2(n) {
 
 /**
  * @param {unknown} payloadHours `hours` object from GET /policies/operating-hours
- * @returns {{ day_start: string, day_end: string, weekend_day_start: string|null, weekend_day_end: string|null }}
+ * @returns {{ day_start: string, day_end: string, weekend_day_start: string|null, weekend_day_end: string|null, max_booking_date: string|null }}
  */
 export function normalizeOperatingHoursPayload(payloadHours) {
     const d = payloadHours && typeof payloadHours === 'object' ? payloadHours : {};
@@ -26,12 +27,41 @@ export function normalizeOperatingHoursPayload(payloadHours) {
         weekendStart = null;
         weekendEnd = null;
     }
+    const maxRaw = d.max_booking_date;
+    let maxBookingDate =
+        maxRaw != null && String(maxRaw).trim() !== '' ? String(maxRaw).trim().slice(0, 10) : null;
+    if (maxBookingDate && !/^\d{4}-\d{2}-\d{2}$/.test(maxBookingDate)) {
+        maxBookingDate = null;
+    }
+
     return {
         day_start: String(d.day_start || DEFAULT_OPERATING_HOURS_SHAPE.day_start).slice(0, 5),
         day_end: String(d.day_end || DEFAULT_OPERATING_HOURS_SHAPE.day_end).slice(0, 5),
         weekend_day_start: weekendStart,
         weekend_day_end: weekendEnd,
+        max_booking_date: maxBookingDate,
     };
+}
+
+/** @param {string|null|undefined} ymd @param {string|null|undefined} maxYmd */
+export function isYmdAfterMaxBooking(ymd, maxYmd) {
+    if (!maxYmd || !ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+    return String(ymd) > String(maxYmd);
+}
+
+/**
+ * True when the month grid is on the max-booking month or later (disables “next month”).
+ * @param {number} viewYear
+ * @param {number} viewMonthIndex0 0–11
+ * @param {string|null|undefined} maxYmd YYYY-MM-DD in Manila civil calendar
+ */
+export function isCalendarViewMonthAtOrBeyondMax(viewYear, viewMonthIndex0, maxYmd) {
+    if (!maxYmd || !/^\d{4}-\d{2}-\d{2}$/.test(maxYmd)) return false;
+    const [maxYear, maxMonth1] = maxYmd.split('-').map(Number);
+    const maxMonthIndex0 = maxMonth1 - 1;
+    if (viewYear > maxYear) return true;
+    if (viewYear === maxYear && viewMonthIndex0 >= maxMonthIndex0) return true;
+    return false;
 }
 
 /**

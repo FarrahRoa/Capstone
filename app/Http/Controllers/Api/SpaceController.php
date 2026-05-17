@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Space;
 use App\Support\ApiResponse;
 use App\Support\SpaceGuidelineDetails;
+use App\Support\StudentSpaceAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,7 +18,19 @@ class SpaceController extends Controller
             && $request->user()
             && $request->user()->canDo('reservation.view_all');
 
+        $forShowcase = $request->boolean('showcase');
+
         $spaces = Space::where('is_active', true)->orderBy('name')->get();
+
+        $user = $request->user();
+        if ($user && ! $operational) {
+            $user->loadMissing('role');
+            if ($user->hasStudentRole()) {
+                $spaces = $forShowcase
+                    ? StudentSpaceAccess::filterShowcaseSpaces($spaces, $user)
+                    : StudentSpaceAccess::filterBookableSpaces($spaces);
+            }
+        }
 
         $payload = $spaces->map(function (Space $space) use ($operational) {
             $displayName = $operational

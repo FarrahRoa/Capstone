@@ -22,10 +22,20 @@ class AvailabilityPrivacyTest extends TestCase
 
     public function test_availability_masks_other_users_reservation_details(): void
     {
-        $studentRole = Role::firstOrCreate(['slug' => 'student'], ['name' => 'Student', 'description' => 't']);
+        $facultyRole = Role::firstOrCreate(['slug' => 'faculty'], ['name' => 'Faculty', 'description' => 't']);
 
-        $owner = User::factory()->create(['role_id' => $studentRole->id, 'is_activated' => true]);
-        $viewer = User::factory()->create(['role_id' => $studentRole->id, 'is_activated' => true]);
+        $owner = User::factory()->create([
+            'role_id' => $facultyRole->id,
+            'is_activated' => true,
+            'user_type' => User::USER_TYPE_FACULTY_STAFF,
+            'email' => 'owner-privacy-'.uniqid().'@xu.edu.ph',
+        ]);
+        $viewer = User::factory()->create([
+            'role_id' => $facultyRole->id,
+            'is_activated' => true,
+            'user_type' => User::USER_TYPE_FACULTY_STAFF,
+            'email' => 'viewer-privacy-'.uniqid().'@xu.edu.ph',
+        ]);
 
         $space = Space::create([
             'name' => 'Privacy Room',
@@ -47,6 +57,7 @@ class AvailabilityPrivacyTest extends TestCase
             'event_title' => 'Secret meeting',
             'event_description' => 'Do not leak',
             'purpose' => 'fallback purpose',
+            'reservation_number' => '9AVR',
         ]);
 
         Sanctum::actingAs($viewer);
@@ -56,6 +67,8 @@ class AvailabilityPrivacyTest extends TestCase
         $this->assertNotNull($row);
         $this->assertCount(1, $row['reserved_slots']);
         $slot = $row['reserved_slots'][0];
+        $this->assertFalse($slot['details_revealed']);
+        $this->assertSame('9AVR', $slot['reservation_number']);
         $this->assertNull($slot['user']);
         $this->assertNull($slot['title']);
         $this->assertNull($slot['description']);
@@ -65,6 +78,7 @@ class AvailabilityPrivacyTest extends TestCase
         $resp2->assertOk();
         $row2 = collect($resp2->json('data'))->firstWhere('space.id', $space->id);
         $slot2 = $row2['reserved_slots'][0];
+        $this->assertTrue($slot2['details_revealed']);
         $this->assertSame($owner->id, $slot2['user']['id']);
         $this->assertSame('Secret meeting', $slot2['title']);
         $this->assertSame('Do not leak', $slot2['description']);
@@ -104,6 +118,7 @@ class AvailabilityPrivacyTest extends TestCase
         $resp->assertOk();
         $row = collect($resp->json('data'))->firstWhere('space.id', $space->id);
         $slot = $row['reserved_slots'][0];
+        $this->assertTrue($slot['details_revealed']);
         $this->assertSame($owner->id, $slot['user']['id']);
         $this->assertSame('Staff-visible title', $slot['title']);
     }

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Holiday;
 use App\Models\PolicyDocument;
 use App\Support\ReservationDeanRouting;
+use App\Support\ReservationLeadTimePolicy;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
@@ -107,6 +108,19 @@ class StoreReservationRequest extends FormRequest
             $holiday = Holiday::matchForDate($start, $tz);
             if ($holiday !== null) {
                 $validator->errors()->add('start_at', 'Cannot reserve on a holiday.');
+                return;
+            }
+
+            if (PolicyDocument::reservationBeyondMaxBookingDate($start, $end, $tz)) {
+                $validator->errors()->add('start_at', PolicyDocument::maxBookingDateValidationMessage());
+
+                return;
+            }
+
+            $leadTimeMessage = ReservationLeadTimePolicy::messageIfBlockedFor($this->user(), $start, $end);
+            if ($leadTimeMessage !== null) {
+                $validator->errors()->add('start_at', $leadTimeMessage);
+
                 return;
             }
 
