@@ -1,20 +1,67 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../api';
 import { unwrapData } from '../../utils/apiEnvelope';
 import { ui } from '../../theme';
 
+const AFFILIATION_COLLEGE = 'college';
+const AFFILIATION_OFFICE = 'office_department';
+
 const TYPE_OPTIONS = [
-    { value: 'college', label: 'College (Student)' },
-    { value: 'office_department', label: 'Office/Department (Employee/Staff)' },
+    { value: AFFILIATION_COLLEGE, label: 'College (Student)' },
+    { value: AFFILIATION_OFFICE, label: 'Office/Department (Employee/Staff)' },
 ];
 
 const emptyForm = {
-    affiliation_type: 'college',
+    affiliation_type: AFFILIATION_COLLEGE,
     affiliation_name: '',
     approver_name: '',
     approver_email: '',
     is_active: true,
 };
+
+function normalizeAffiliationList(payload, label) {
+    if (!Array.isArray(payload)) {
+        if (import.meta.env.DEV) {
+            console.error(`Dean Emails: Expected ${label} array, got`, payload);
+        }
+        return [];
+    }
+    return payload.filter((row) => row && typeof row.name === 'string' && row.name.trim() !== '');
+}
+
+/**
+ * @param {'college' | 'office_department'} type
+ * @param {{ name: string }[]} collegeRows
+ * @param {{ name: string }[]} officeRows
+ */
+function namesForAffiliationType(type, collegeRows, officeRows) {
+    switch (type) {
+        case AFFILIATION_COLLEGE:
+            return collegeRows.map((c) => c.name);
+        case AFFILIATION_OFFICE:
+            return officeRows.map((o) => o.name);
+        default:
+            return [];
+    }
+}
+
+function EmptyAffiliationHint({ type, loading }) {
+    if (loading) {
+        return <p className="mt-1 text-xs text-slate-500">Loading affiliation list…</p>;
+    }
+    if (type === AFFILIATION_COLLEGE) {
+        return (
+            <p className="mt-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                No colleges found. Add colleges under Admin → Colleges &amp; Offices first.
+            </p>
+        );
+    }
+    return (
+        <p className="mt-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            No offices found. Add offices under Admin → Colleges &amp; Offices first.
+        </p>
+    );
+}
 
 export default function AdminDeanEmails() {
     const [rows, setRows] = useState([]);
@@ -23,17 +70,22 @@ export default function AdminDeanEmails() {
     const [saving, setSaving] = useState(false);
     const [colleges, setColleges] = useState([]);
     const [offices, setOffices] = useState([]);
+    const [affiliationsLoading, setAffiliationsLoading] = useState(true);
 
     const [form, setForm] = useState(emptyForm);
 
     const [editingId, setEditingId] = useState(null);
     const [editDraft, setEditDraft] = useState(null);
 
-    const addNameOptions = useMemo(() => {
-        return form.affiliation_type === 'college'
-            ? colleges.map((c) => c.name)
-            : offices.map((o) => o.name);
-    }, [form.affiliation_type, colleges, offices]);
+    const affiliationNamesForType = useCallback(
+        (type) => namesForAffiliationType(type, colleges, offices),
+        [colleges, offices],
+    );
+
+    const addNameOptions = useMemo(
+        () => affiliationNamesForType(form.affiliation_type),
+        [form.affiliation_type, affiliationNamesForType],
+    );
 
     const load = () => {
         setLoading(true);
@@ -41,7 +93,18 @@ export default function AdminDeanEmails() {
         api.get('/admin/dean-email-mappings')
             .then(({ data }) => {
                 const list = unwrapData(data);
-                setRows(Array.isArray(list) ? list : []);
+                if (!Array.isArray(list)) {
+                    if (import.meta.env.DEV) {
+                        console.error('Dean Emails: Expected mappings array, got', list);
+                    }
+                    setRows([]);
+                    setError('Unexpected response from server. Could not load mappings.');
+                    return;
+                }
+                if (import.meta.env.DEV) {
+                    console.log('Dean Emails Response:', list);
+                }
+                setRows(list);
             })
             .catch((err) => setError(err.response?.data?.message || 'Failed to load dean email mappings.'))
             .finally(() => setLoading(false));
@@ -52,13 +115,29 @@ export default function AdminDeanEmails() {
     }, []);
 
     useEffect(() => {
-        api.get('/admin/colleges')
-            .then(({ data }) => setColleges(Array.isArray(unwrapData(data)) ? unwrapData(data) : []))
-            .catch(() => setColleges([]));
-        api.get('/admin/offices')
-            .then(({ data }) => setOffices(Array.isArray(unwrapData(data)) ? unwrapData(data) : []))
-            .catch(() => setOffices([]));
+        setAffiliationsLoading(true);
+        Promise.all([
+            api.get('/admin/colleges'),
+            api.get('/admin/offices'),
+        ])
+            .then(([collegesRes, officesRes]) => {
+                setColleges(normalizeAffiliationList(unwrapData(collegesRes.data), 'colleges'));
+                setOffices(normalizeAffiliationList(unwrapData(officesRes.data), 'offices'));
+            })
+            .catch((err) => {
+                setColleges([]);
+                setOffices([]);
+                setError((prev) => prev || err.response?.data?.message || 'Failed to load college/office lists.');
+            })
+            .finally(() => setAffiliationsLoading(false));
     }, []);
+
+    useEffect(() => {
+        if (import.meta.env.DEV) {
+            console.log('Affiliation Type:', form.affiliation_type);
+            console.log('Affiliation name options:', addNameOptions);
+        }
+    }, [form.affiliation_type, addNameOptions]);
 
     const onCreate = async (e) => {
         e.preventDefault();
@@ -161,12 +240,21 @@ export default function AdminDeanEmails() {
 
     const editNameOptions = useMemo(() => {
         if (!editDraft) return [];
-        return editDraft.affiliation_type === 'college'
-            ? colleges.map((c) => c.name)
-            : offices.map((o) => o.name);
-    }, [editDraft, colleges, offices]);
+        return affiliationNamesForType(editDraft.affiliation_type);
+    }, [editDraft, affiliationNamesForType]);
 
-    const sorted = useMemo(() => rows, [rows]);
+    const sorted = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+
+    const affiliationTypeLabel = (type) => {
+        switch (type) {
+            case AFFILIATION_COLLEGE:
+                return 'College';
+            case AFFILIATION_OFFICE:
+                return 'Office/Department';
+            default:
+                return type || 'Unknown';
+        }
+    };
 
     return (
         <div>
@@ -191,10 +279,11 @@ export default function AdminDeanEmails() {
                             value={form.affiliation_type}
                             onChange={(e) => {
                                 const t = e.target.value;
+                                const names = affiliationNamesForType(t);
                                 setForm((f) => ({
                                     ...f,
                                     affiliation_type: t,
-                                    affiliation_name: affiliationNamesForType(t).includes(f.affiliation_name)
+                                    affiliation_name: names.includes(f.affiliation_name)
                                         ? f.affiliation_name
                                         : '',
                                 }));
@@ -213,14 +302,22 @@ export default function AdminDeanEmails() {
                             onChange={(e) => setForm((f) => ({ ...f, affiliation_name: e.target.value }))}
                             className={ui.select}
                             required
+                            disabled={affiliationsLoading || addNameOptions.length === 0}
                         >
                             <option value="" disabled>
-                                Select affiliation…
+                                {affiliationsLoading
+                                    ? 'Loading affiliations…'
+                                    : addNameOptions.length === 0
+                                        ? 'No affiliations available'
+                                        : 'Select affiliation…'}
                             </option>
                             {addNameOptions.map((name) => (
                                 <option key={name} value={name}>{name}</option>
                             ))}
                         </select>
+                        {addNameOptions.length === 0 && (
+                            <EmptyAffiliationHint type={form.affiliation_type} loading={affiliationsLoading} />
+                        )}
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Approver name (optional)</label>
@@ -253,7 +350,11 @@ export default function AdminDeanEmails() {
                         <label htmlFor="dean-active" className="text-sm text-slate-700">Active</label>
                     </div>
                     <div className="md:col-span-2">
-                        <button type="submit" disabled={saving || !form.affiliation_name} className={ui.btnPrimary}>
+                        <button
+                            type="submit"
+                            disabled={saving || !form.affiliation_name || addNameOptions.length === 0}
+                            className={ui.btnPrimary}
+                        >
                             {saving ? 'Saving…' : 'Add mapping'}
                         </button>
                     </div>
@@ -289,10 +390,11 @@ export default function AdminDeanEmails() {
                                                 value={editDraft.affiliation_type}
                                                 onChange={(e) => {
                                                     const t = e.target.value;
+                                                    const names = affiliationNamesForType(t);
                                                     setEditDraft((d) => ({
                                                         ...d,
                                                         affiliation_type: t,
-                                                        affiliation_name: affiliationNamesForType(t).includes(d.affiliation_name)
+                                                        affiliation_name: names.includes(d.affiliation_name)
                                                             ? d.affiliation_name
                                                             : '',
                                                     }));
@@ -305,23 +407,33 @@ export default function AdminDeanEmails() {
                                                 ))}
                                             </select>
                                         ) : (
-                                            r.affiliation_type === 'college' ? 'College' : 'Office/Department'
+                                            affiliationTypeLabel(r.affiliation_type)
                                         )}
                                     </td>
                                     <td className="px-4 py-2 text-slate-900 font-medium align-top">
                                         {isEditing ? (
-                                            <select
-                                                value={editDraft.affiliation_name}
-                                                onChange={(e) => setEditDraft((d) => ({ ...d, affiliation_name: e.target.value }))}
-                                                className={ui.select}
-                                                disabled={saving}
-                                                required
-                                            >
-                                                <option value="" disabled>Select…</option>
-                                                {editNameOptions.map((name) => (
-                                                    <option key={name} value={name}>{name}</option>
-                                                ))}
-                                            </select>
+                                            <>
+                                                <select
+                                                    value={editDraft.affiliation_name}
+                                                    onChange={(e) => setEditDraft((d) => ({ ...d, affiliation_name: e.target.value }))}
+                                                    className={ui.select}
+                                                    disabled={saving || affiliationsLoading || editNameOptions.length === 0}
+                                                    required
+                                                >
+                                                    <option value="" disabled>
+                                                        {editNameOptions.length === 0 ? 'No affiliations available' : 'Select…'}
+                                                    </option>
+                                                    {editNameOptions.map((name) => (
+                                                        <option key={name} value={name}>{name}</option>
+                                                    ))}
+                                                </select>
+                                                {editNameOptions.length === 0 && (
+                                                    <EmptyAffiliationHint
+                                                        type={editDraft.affiliation_type}
+                                                        loading={affiliationsLoading}
+                                                    />
+                                                )}
+                                            </>
                                         ) : (
                                             r.affiliation_name
                                         )}

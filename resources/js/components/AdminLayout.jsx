@@ -1,12 +1,13 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useScrollContainerToTopOnRouteChange } from '../hooks/useNavDrawerBehavior';
 import {
     getVisibleAdminNavItems,
     isAdminNavItemActive,
 } from './admin/adminNavItems';
 
-const menuLinkClass = ({ isActive }) =>
+const sidebarLinkClass = ({ isActive }) =>
     [
         'block rounded-lg px-3 py-2.5 text-sm font-medium leading-snug transition-colors duration-200',
         isActive
@@ -14,9 +15,33 @@ const menuLinkClass = ({ isActive }) =>
             : 'text-white/90 hover:bg-white/12 active:bg-white/18',
     ].join(' ');
 
+function AdminNavList({ items, pathname, onNavLinkClick }) {
+    return (
+        <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-2 py-3 [scrollbar-width:thin]">
+            <ul className="flex flex-col gap-1">
+                {items.map((item) => {
+                    const active = isAdminNavItemActive(pathname, item);
+                    return (
+                        <li key={item.to}>
+                            <NavLink
+                                to={item.to}
+                                className={sidebarLinkClass}
+                                aria-current={active ? 'page' : undefined}
+                                onClick={onNavLinkClick}
+                            >
+                                {item.label}
+                            </NavLink>
+                        </li>
+                    );
+                })}
+            </ul>
+        </nav>
+    );
+}
+
 function AdminTopBar({
     navOpen,
-    toggleNav,
+    onToggleNav,
     hamburgerRef,
     accountOpen,
     setAccountOpen,
@@ -24,39 +49,37 @@ function AdminTopBar({
     accountLabel,
     user,
     isQueueViewOnly,
-    closeNav,
     handleLogout,
 }) {
     return (
-        <header className="sticky top-0 z-30 border-b border-black/10 bg-xu-primary text-white shadow-md">
+        <header className="z-30 shrink-0 border-b border-black/10 bg-xu-primary text-white shadow-md">
             <div className="mx-auto flex min-h-[3.5rem] w-full min-w-0 max-w-[100vw] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5 lg:px-8">
-                <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
-                    <button
-                        ref={hamburgerRef}
-                        type="button"
-                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/25 bg-white/10 text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-xu-gold/70"
-                        aria-expanded={navOpen ? 'true' : 'false'}
-                        aria-controls="admin-nav-drawer"
-                        aria-label={navOpen ? 'Close navigation menu' : 'Open navigation menu'}
-                        onClick={toggleNav}
-                    >
-                        {navOpen ? (
-                            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                                <path d="M6 6l12 12M18 6L6 18" />
-                            </svg>
-                        ) : (
-                            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                                <path d="M4 7h16M4 12h16M4 17h16" />
-                            </svg>
-                        )}
-                    </button>
-                    <Link
-                        to="/admin/dashboard"
-                        className="shrink-0 border-l border-white/25 pl-2 font-serif text-sm font-semibold tracking-tight text-white sm:pl-2.5 sm:text-base"
-                    >
-                        XU Library
-                    </Link>
-                </div>
+                <button
+                    ref={hamburgerRef}
+                    type="button"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/25 bg-white/10 text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-xu-gold/70"
+                    aria-expanded={navOpen ? 'true' : 'false'}
+                    aria-controls="admin-nav-drawer"
+                    aria-label={navOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                    onClick={onToggleNav}
+                >
+                    {navOpen ? (
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                            <path d="M6 6l12 12M18 6L6 18" />
+                        </svg>
+                    ) : (
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                            <path d="M4 7h16M4 12h16M4 17h16" />
+                        </svg>
+                    )}
+                </button>
+
+                <Link
+                    to="/admin/dashboard"
+                    className="shrink-0 border-l border-white/25 pl-2.5 font-serif text-sm font-semibold tracking-tight text-white sm:text-base"
+                >
+                    XU Library
+                </Link>
 
                 <div className="min-w-0 flex-1" aria-hidden="true" />
 
@@ -64,10 +87,7 @@ function AdminTopBar({
                     <div className="relative" ref={accountRef}>
                         <button
                             type="button"
-                            onClick={() => {
-                                closeNav();
-                                setAccountOpen((v) => !v);
-                            }}
+                            onClick={() => setAccountOpen((v) => !v)}
                             className="flex max-w-[min(100vw-8rem,14rem)] items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-2 py-1.5 transition hover:bg-white/10 hover:border-white/35 sm:max-w-none sm:px-3 sm:py-2"
                             aria-haspopup="menu"
                             aria-expanded={accountOpen ? 'true' : 'false'}
@@ -126,9 +146,11 @@ function AdminTopBar({
     );
 }
 
-function AdminSidebar({
+/** Nav sections only — fixed overlay drawer; no horizontal top nav. */
+function AdminNavDrawer({
     isOpen,
     onClose,
+    onNavLinkClick,
     drawerRef,
     drawerCloseRef,
     visibleNavItems,
@@ -139,7 +161,7 @@ function AdminSidebar({
     }
 
     return (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-50" role="presentation">
             <button
                 type="button"
                 className="absolute inset-0 bg-black/45"
@@ -154,7 +176,7 @@ function AdminSidebar({
                 aria-label="Admin navigation"
                 className="absolute left-0 top-0 flex h-full min-h-0 w-[min(100vw-16rem,20rem)] max-w-sm flex-col bg-xu-primary text-white shadow-2xl ring-1 ring-black/15 sm:w-72"
             >
-                <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-4">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/15 px-4 py-4">
                     <div className="min-w-0">
                         <p className="truncate font-serif text-base font-semibold tracking-tight text-white">
                             Navigation
@@ -174,46 +196,28 @@ function AdminSidebar({
                     </button>
                 </div>
 
-                <nav className="flex-1 overflow-y-auto overscroll-y-contain px-2 py-3 [scrollbar-width:thin]">
-                    <ul className="flex flex-col gap-1">
-                        {visibleNavItems.map((item) => {
-                            const active = isAdminNavItemActive(pathname, item);
-                            return (
-                                <li key={item.to}>
-                                    <NavLink
-                                        to={item.to}
-                                        className={() => menuLinkClass({ isActive: active })}
-                                        aria-current={active ? 'page' : undefined}
-                                        onClick={onClose}
-                                    >
-                                        {item.label}
-                                    </NavLink>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                </nav>
+                <AdminNavList items={visibleNavItems} pathname={pathname} onNavLinkClick={onNavLinkClick} />
             </aside>
         </div>
     );
 }
 
 /**
- * Single admin layout shell: top bar + hamburger drawer + route outlet.
- * Mounted only from app.jsx under path="/admin".
+ * Single admin shell for all /admin/* routes. Mounted once; child pages render in <Outlet /> only.
  */
 export default function AdminLayout() {
     const { user, logout, hasPermission } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isNavOpen, setIsNavOpen] = useState(false);
     const [accountOpen, setAccountOpen] = useState(false);
 
     const hamburgerRef = useRef(null);
     const drawerRef = useRef(null);
     const drawerCloseRef = useRef(null);
     const accountRef = useRef(null);
+    const mainScrollRef = useRef(null);
 
     const visibleNavItems = useMemo(() => {
         const perms = user?.permissions ?? [];
@@ -235,14 +239,23 @@ export default function AdminLayout() {
         navigate('/login');
     };
 
-    const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
-    const toggleSidebar = useCallback(() => {
-        setAccountOpen(false);
-        setIsSidebarOpen((v) => !v);
+    const closeNav = useCallback(() => {
+        setIsNavOpen(false);
     }, []);
 
+    const toggleNav = useCallback(() => {
+        setAccountOpen(false);
+        setIsNavOpen((open) => !open);
+    }, []);
+
+    const handleNavLinkClick = useCallback(() => {
+        setIsNavOpen(false);
+    }, []);
+
+    useScrollContainerToTopOnRouteChange(mainScrollRef);
+
     useEffect(() => {
-        setIsSidebarOpen(false);
+        setIsNavOpen(false);
     }, [location.pathname]);
 
     useEffect(() => {
@@ -257,13 +270,13 @@ export default function AdminLayout() {
     }, [accountOpen]);
 
     useEffect(() => {
-        if (!isSidebarOpen) return;
+        if (!isNavOpen) return;
 
         const prevOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
 
         const onKeyDown = (e) => {
-            if (e.key === 'Escape') closeSidebar();
+            if (e.key === 'Escape') closeNav();
         };
         document.addEventListener('keydown', onKeyDown);
         drawerCloseRef.current?.focus?.();
@@ -273,24 +286,24 @@ export default function AdminLayout() {
             document.removeEventListener('keydown', onKeyDown);
             hamburgerRef.current?.focus?.();
         };
-    }, [isSidebarOpen, closeSidebar]);
+    }, [isNavOpen, closeNav]);
 
     useEffect(() => {
-        if (!isSidebarOpen) return;
+        if (!isNavOpen) return;
         const onDoc = (e) => {
             if (drawerRef.current?.contains(e.target)) return;
             if (hamburgerRef.current?.contains(e.target)) return;
-            closeSidebar();
+            closeNav();
         };
         document.addEventListener('mousedown', onDoc);
         return () => document.removeEventListener('mousedown', onDoc);
-    }, [isSidebarOpen, closeSidebar]);
+    }, [isNavOpen, closeNav]);
 
     return (
-        <div className="min-h-screen min-w-0 overflow-x-hidden bg-xu-page">
+        <div className="flex h-screen w-full flex-col overflow-hidden bg-xu-page">
             <AdminTopBar
-                navOpen={isSidebarOpen}
-                toggleNav={toggleSidebar}
+                navOpen={isNavOpen}
+                onToggleNav={toggleNav}
                 hamburgerRef={hamburgerRef}
                 accountOpen={accountOpen}
                 setAccountOpen={setAccountOpen}
@@ -298,27 +311,26 @@ export default function AdminLayout() {
                 accountLabel={accountLabel}
                 user={user}
                 isQueueViewOnly={isQueueViewOnly}
-                closeNav={closeSidebar}
                 handleLogout={handleLogout}
             />
 
-            <AdminSidebar
-                isOpen={isSidebarOpen}
-                onClose={closeSidebar}
+            <AdminNavDrawer
+                isOpen={isNavOpen}
+                onClose={closeNav}
+                onNavLinkClick={handleNavLinkClick}
                 drawerRef={drawerRef}
                 drawerCloseRef={drawerCloseRef}
                 visibleNavItems={visibleNavItems}
                 pathname={location.pathname}
             />
 
-            <main className="mx-auto min-w-0 w-full max-w-7xl px-3 py-5 sm:px-4 sm:py-6 md:px-5 lg:px-6">
-                <Suspense
-                    fallback={
-                        <p className="py-8 text-center text-sm font-medium text-slate-600">Loading page…</p>
-                    }
-                >
+            <main
+                ref={mainScrollRef}
+                className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-xu-page [scrollbar-width:thin]"
+            >
+                <div className="mx-auto min-w-0 w-full max-w-7xl px-3 py-5 sm:px-4 sm:py-6 md:px-5 lg:px-6">
                     <Outlet />
-                </Suspense>
+                </div>
             </main>
         </div>
     );

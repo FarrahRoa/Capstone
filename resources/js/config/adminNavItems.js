@@ -1,13 +1,14 @@
 /**
- * Single source of truth for student/user Layout.jsx top navigation only.
- * @typedef {{ label: string; to: string; permission: string; matchPaths?: string[] }} PrimaryNavItem
+ * Admin hamburger navigation — every `to` MUST stay under `/admin/*`
+ * so React Router keeps AdminLayout mounted (never user Layout.jsx).
+ *
+ * @typedef {{ label: string; to: string; permission: string | null; matchPaths?: string[] }} AdminNavItem
  */
 
-/** @type {PrimaryNavItem[]} */
-export const PRIMARY_NAV_ITEMS = [
-    { label: 'Calendar', to: '/calendar', permission: 'calendar.view' },
-    { label: 'New Reservation', to: '/reserve', permission: 'reservation.create' },
-    { label: 'My Reservations', to: '/my-reservations', permission: 'reservation.view_own' },
+/** @type {AdminNavItem[]} */
+export const ADMIN_NAV_ITEMS = [
+    { label: 'Dashboard', to: '/admin/dashboard', permission: null },
+    { label: 'Calendar', to: '/admin/calendar', permission: 'calendar.view' },
     { label: 'Reservation Queue', to: '/admin/reservations', permission: 'reservation.view_all' },
     { label: 'Reports', to: '/admin/reports', permission: 'reports.view' },
     { label: 'Spaces', to: '/admin/spaces', permission: 'spaces.manage' },
@@ -21,17 +22,22 @@ export const PRIMARY_NAV_ITEMS = [
 
 /**
  * @param {(permission: string) => boolean} hasPermission
- * @returns {PrimaryNavItem[]}
+ * @returns {AdminNavItem[]}
  */
-export function getVisiblePrimaryNavItems(hasPermission) {
-    return PRIMARY_NAV_ITEMS.filter((item) => hasPermission(item.permission));
+export function getVisibleAdminNavItems(hasPermission) {
+    return ADMIN_NAV_ITEMS.filter((item) => {
+        if (item.permission === null) {
+            return true;
+        }
+        return hasPermission(item.permission);
+    });
 }
 
 /**
  * @param {string} pathname
- * @param {PrimaryNavItem} item
+ * @param {AdminNavItem} item
  */
-export function isPrimaryNavItemActive(pathname, item) {
+export function isAdminNavItemActive(pathname, item) {
     const paths = item.matchPaths ?? [item.to];
     return paths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }

@@ -12,7 +12,7 @@ function RouteLoading() {
 }
 
 /**
- * Auth gate for the /admin route tree. Renders AdminLayout (with Outlet) — never Layout.jsx.
+ * Auth gate for /admin/* — mounts AdminLayout once; child routes render via <Outlet />.
  */
 export default function AdminAreaRoute() {
     const { user, loading, hasAnyPermission } = useAuth();

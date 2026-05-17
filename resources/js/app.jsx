@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AdminAreaRoute from './components/admin/AdminAreaRoute';
 import AdminPermissionGate from './components/admin/AdminPermissionGate';
-const Layout = lazy(() => import('./components/Layout'));
+import Layout from './components/Layout';
 import HomeDashboard from './pages/HomeDashboard';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -57,47 +57,28 @@ function AuthOnlyRoute({ children }) {
     return children;
 }
 
-function withLayout(node) {
-    return (
-        <Layout>
-            {node}
-        </Layout>
-    );
-}
-
-/** /admin landing — always dashboard inside the admin shell. */
-function AdminIndexRedirect() {
-    return <Navigate to="dashboard" replace />;
-}
-
 function AppRoutes() {
     return (
-        <Suspense fallback={<RouteLoading />}>
-            <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/admin/login" element={<AdminLogin />} />
-                <Route path="/admin/invite" element={<AdminInviteSetPassword />} />
-                <Route path="/unauthorized" element={<Unauthorized />} />
-                <Route path="/otp" element={<OTPVerify />} />
-                <Route
-                    path="/complete-profile"
-                    element={
-                        <AuthOnlyRoute>
+        <Routes>
+            <Route path="/login" element={<Suspense fallback={<RouteLoading />}><Login /></Suspense>} />
+            <Route path="/admin/login" element={<Suspense fallback={<RouteLoading />}><AdminLogin /></Suspense>} />
+            <Route path="/admin/invite" element={<Suspense fallback={<RouteLoading />}><AdminInviteSetPassword /></Suspense>} />
+            <Route path="/unauthorized" element={<Suspense fallback={<RouteLoading />}><Unauthorized /></Suspense>} />
+            <Route path="/otp" element={<Suspense fallback={<RouteLoading />}><OTPVerify /></Suspense>} />
+            <Route
+                path="/complete-profile"
+                element={
+                    <AuthOnlyRoute>
+                        <Suspense fallback={<RouteLoading />}>
                             <CompleteProfile />
-                        </AuthOnlyRoute>
-                    }
-                />
-                <Route
-                    path="/account"
-                    element={
-                        <PrivateRoute>
-                            {withLayout(<AccountSettings />)}
-                        </PrivateRoute>
-                    }
-                />
-                <Route path="/confirm-reservation" element={<ConfirmReservation />} />
-                <Route path="/admin" element={<AdminAreaRoute />}>
-                    <Route index element={<AdminIndexRedirect />} />
+                        </Suspense>
+                    </AuthOnlyRoute>
+                }
+            />
+            <Route path="/confirm-reservation" element={<Suspense fallback={<RouteLoading />}><ConfirmReservation /></Suspense>} />
+            {/* Admin shell: eager imports + no parent Suspense so AdminLayout never unmounts between admin routes */}
+            <Route path="/admin" element={<AdminAreaRoute />}>
+                    <Route index element={<Navigate to="dashboard" replace />} />
                     <Route path="dashboard" element={<HomeDashboard />} />
                     <Route
                         path="calendar"
@@ -179,28 +160,41 @@ function AppRoutes() {
                             </AdminPermissionGate>
                         }
                     />
-                </Route>
+            </Route>
+            <Route element={<Layout />}>
                 <Route
-                    path="/"
+                    path="/account"
                     element={
-                        <PrivateRoute requiredPermission="calendar.view">
-                            {withLayout(<HomeDashboard />)}
+                        <PrivateRoute>
+                            <Suspense fallback={<RouteLoading />}>
+                                <AccountSettings />
+                            </Suspense>
                         </PrivateRoute>
                     }
                 />
-                <Route
-                    path="/calendar"
-                    element={
-                        <PrivateRoute requiredPermission="calendar.view">
-                            {withLayout(<Calendar />)}
-                        </PrivateRoute>
-                    }
-                />
+                    <Route
+                        path="/"
+                        element={
+                            <PrivateRoute requiredPermission="calendar.view">
+                                <HomeDashboard />
+                            </PrivateRoute>
+                        }
+                    />
+                    <Route
+                        path="/calendar"
+                        element={
+                            <PrivateRoute requiredPermission="calendar.view">
+                                <Calendar />
+                            </PrivateRoute>
+                        }
+                    />
                 <Route
                     path="/reserve"
                     element={
                         <PrivateRoute requiredPermission="reservation.create">
-                            {withLayout(<ReservationForm />)}
+                            <Suspense fallback={<RouteLoading />}>
+                                <ReservationForm />
+                            </Suspense>
                         </PrivateRoute>
                     }
                 />
@@ -208,13 +202,15 @@ function AppRoutes() {
                     path="/my-reservations"
                     element={
                         <PrivateRoute requiredPermission="reservation.view_own">
-                            {withLayout(<MyReservations />)}
+                            <Suspense fallback={<RouteLoading />}>
+                                <MyReservations />
+                            </Suspense>
                         </PrivateRoute>
                     }
                 />
-                <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-        </Suspense>
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
     );
 }
 

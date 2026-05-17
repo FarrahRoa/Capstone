@@ -1,7 +1,12 @@
-import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getVisiblePrimaryNavItems } from '../config/primaryNavItems';
+import {
+    LAYOUT_NAV_DRAWER_MOBILE_MEDIA,
+    useCloseNavDrawerOnRouteChangeMobileOnly,
+    useNavLinkCloseHandler,
+} from '../hooks/useNavDrawerBehavior';
 
 const navItemClass = ({ isActive }) =>
     [
@@ -19,10 +24,9 @@ const navItemClassMobile = ({ isActive }) =>
             : 'text-white/90 hover:bg-white/12 active:bg-white/18',
     ].join(' ');
 
-export default function Layout({ children }) {
+export default function Layout() {
     const { user, logout, hasPermission } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation();
     const [accountOpen, setAccountOpen] = useState(false);
     const [navOpen, setNavOpen] = useState(false);
     const accountRef = useRef(null);
@@ -52,9 +56,11 @@ export default function Layout({ children }) {
         return () => document.removeEventListener('mousedown', onDoc);
     }, [accountOpen]);
 
-    useEffect(() => {
-        setNavOpen(false);
-    }, [location.pathname]);
+    useCloseNavDrawerOnRouteChangeMobileOnly(setNavOpen, LAYOUT_NAV_DRAWER_MOBILE_MEDIA);
+    const handleNavLinkNavigate = useNavLinkCloseHandler(
+        () => setNavOpen(false),
+        LAYOUT_NAV_DRAWER_MOBILE_MEDIA
+    );
 
     useEffect(() => {
         if (!navOpen) return;
@@ -78,8 +84,6 @@ export default function Layout({ children }) {
         };
     }, [navOpen]);
 
-    const closeMobileNav = () => setNavOpen(false);
-
     const isQueueViewOnly = canViewReservationQueue && !hasPermission('reservation.approve');
 
     const visiblePrimaryNavItems = getVisiblePrimaryNavItems(hasPermission);
@@ -88,7 +92,7 @@ export default function Layout({ children }) {
     const navLinkItems = (itemClass, onNavigate) => (
         <>
             {visiblePrimaryNavItems.map((item) => (
-                <NavLink key={item.to} to={item.to} className={itemClass} onClick={onNavigate}>
+                <NavLink key={item.to} to={item.to} className={itemClass} onClick={onNavigate ?? undefined}>
                     {item.label}
                 </NavLink>
             ))}
@@ -217,10 +221,17 @@ export default function Layout({ children }) {
                 </div>
             </nav>
 
-            {navOpen && hasPrimaryNav && (
-                <div className="fixed inset-0 z-50">
+            {hasPrimaryNav && (
+                <div
+                    className={[
+                        'fixed inset-0 z-50 2xl:hidden transition-opacity duration-200',
+                        navOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
+                    ].join(' ')}
+                    aria-hidden={!navOpen}
+                >
                     <button
                         type="button"
+                        tabIndex={navOpen ? 0 : -1}
                         className="absolute inset-0 bg-black/45 transition-opacity"
                         aria-label="Close navigation"
                         onClick={() => setNavOpen(false)}
@@ -230,10 +241,11 @@ export default function Layout({ children }) {
                         role="dialog"
                         aria-modal="true"
                         aria-label="Navigation"
+                        aria-hidden={!navOpen}
                         className={[
-                            'absolute left-0 top-0 h-full w-[18rem] sm:w-72 md:w-80',
+                            'absolute left-0 top-0 flex h-full min-h-0 w-[18rem] flex-col sm:w-72 md:w-80',
                             'bg-xu-primary text-white shadow-2xl ring-1 ring-black/15',
-                            'transform transition-transform duration-200 ease-out',
+                            'transition-transform duration-200 ease-out',
                             navOpen ? 'translate-x-0' : '-translate-x-full',
                         ].join(' ')}
                     >
@@ -262,7 +274,7 @@ export default function Layout({ children }) {
 
                             <div className="flex-1 overflow-y-auto overscroll-y-contain px-2 py-3 [scrollbar-width:thin]">
                                 <div className="flex flex-col gap-1">
-                                    {navLinkItems(navItemClassMobile, closeMobileNav)}
+                                    {navLinkItems(navItemClassMobile, handleNavLinkNavigate)}
                                 </div>
                             </div>
                         </div>
@@ -270,7 +282,9 @@ export default function Layout({ children }) {
                 </div>
             )}
 
-            <main className="mx-auto min-w-0 w-full max-w-7xl px-3 py-5 sm:px-4 sm:py-6 md:px-5 lg:px-6">{children}</main>
+            <main className="mx-auto min-w-0 w-full max-w-7xl px-3 py-5 sm:px-4 sm:py-6 md:px-5 lg:px-6">
+                <Outlet />
+            </main>
         </div>
     );
 }

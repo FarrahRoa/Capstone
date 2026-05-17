@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -39,7 +40,12 @@ class DeanEmailMappingController extends Controller
             ->orderBy('affiliation_name')
             ->get();
 
-        return ApiResponse::data($items);
+        Log::info('Dean email mappings index', [
+            'count' => $items->count(),
+            'by_type' => $items->groupBy('affiliation_type')->map->count(),
+        ]);
+
+        return ApiResponse::data($items->values()->all());
     }
 
     public function store(Request $request): JsonResponse
