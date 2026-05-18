@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\PolicyDocument;
-use App\Support\BookingSlotCutoff;
 use App\Support\ReservationLeadTimePolicy;
 use Carbon\Carbon;
 
@@ -60,7 +59,6 @@ final class TimeSlotService
             return self::buildFallbackSlots($dateYmd, $occupied, $tz);
         }
 
-        $cutoffAnchor = Carbon::parse($dateYmd.' '.BookingSlotCutoff::CUTOFF_HHMM, $tz);
         $occupied = $occupied ?? [];
         $slots = [];
         $currentPointer = $windowStart->copy();
@@ -71,9 +69,8 @@ final class TimeSlotService
                 break;
             }
 
-            $isCutoff = $currentPointer->greaterThanOrEqualTo($cutoffAnchor);
             $busy = self::rangeOverlapsOccupied($currentPointer, $slotEndPointer, $occupied);
-            $status = $isCutoff ? 'unavailable_cutoff' : ($busy ? 'occupied' : 'available');
+            $status = $busy ? 'occupied' : 'available';
 
             $slots[] = [
                 'time' => $currentPointer->format('g:i A'),
@@ -82,9 +79,9 @@ final class TimeSlotService
                 'minute_start' => $currentPointer->minute,
                 'hour_end' => $slotEndPointer->hour,
                 'minute_end' => $slotEndPointer->minute,
-                'is_available' => ! $isCutoff && ! $busy,
+                'is_available' => ! $busy,
                 'status' => $status,
-                'booking_cutoff_blocked' => $isCutoff,
+                'booking_cutoff_blocked' => false,
             ];
 
             $currentPointer->addMinutes(30);

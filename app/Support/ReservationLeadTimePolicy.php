@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\PolicyDocument;
+use App\Models\Space;
 use App\Models\User;
 use Carbon\Carbon;
 
@@ -21,7 +23,8 @@ final class ReservationLeadTimePolicy
 
     public const SAME_DAY_DENIED_MESSAGE = 'Same-day reservations are not allowed.';
 
-    public const CUTOFF_BLACKOUT_MESSAGE = 'Reservations are unavailable after 4:30 PM. Booking resumes tomorrow morning.';
+    /** @deprecated Use {@see PolicyDocument::reservationCutoffValidationMessage()}. */
+    public const CUTOFF_BLACKOUT_MESSAGE = 'Reservations are closed for today. You may reserve again starting 9:00 AM tomorrow.';
 
     /** @deprecated Use {@see SAME_DAY_DENIED_MESSAGE} or {@see CUTOFF_BLACKOUT_MESSAGE}. */
     public const ERROR_MESSAGE = 'Reservations for the selected date are no longer allowed based on system rules.';
@@ -36,16 +39,11 @@ final class ReservationLeadTimePolicy
     }
 
     /**
-     * Evening blackout: from 4:30 PM inclusive until 9:00 AM exclusive (Manila wall clock).
+     * Submission closed window: from 4:30 PM inclusive until 9:00 AM exclusive (Manila wall clock).
      */
     public static function isInEveningBookingBlackout(Carbon $now): bool
     {
-        $local = $now->copy()->timezone(self::TZ);
-        $minutes = $local->hour * 60 + $local->minute;
-        $cutoffMinutes = BookingSlotCutoff::cutoffMinutes();
-        $resetMinutes = BookingSlotCutoff::morningResetMinutes();
-
-        return $minutes >= $cutoffMinutes || $minutes < $resetMinutes;
+        return PolicyDocument::isPastReservationCutoff($now);
     }
 
     /**
@@ -63,8 +61,13 @@ final class ReservationLeadTimePolicy
     /**
      * @return non-empty-string|null validation error message for non-exempt users, or null when allowed.
      */
-    public static function messageIfBlockedFor(?User $user, Carbon $start, Carbon $end, ?Carbon $now = null): ?string
-    {
+    public static function messageIfBlockedFor(
+        ?User $user,
+        Carbon $start,
+        Carbon $end,
+        ?Carbon $now = null,
+        ?Space $space = null
+    ): ?string {
         if (self::isExempt($user)) {
             return null;
         }
@@ -73,15 +76,9 @@ final class ReservationLeadTimePolicy
 
         $todayYmd = $now->copy()->timezone(self::TZ)->format('Y-m-d');
 
-        if (self::rangeOverlapsManilaCalendarDay($start, $end, $todayYmd)) {
+        $allowSameDay = $space !== null && $space->exemptFromOperatingHoursValidation();
+        if (! $allowSameDay && self::rangeOverlapsManilaCalendarDay($start, $end, $todayYmd)) {
             return self::SAME_DAY_DENIED_MESSAGE;
-        }
-
-        if (self::isInEveningBookingBlackout($now)) {
-            $tomorrowStart = $now->copy()->timezone(self::TZ)->startOfDay()->addDay();
-            if ($start->copy()->timezone(self::TZ)->gte($tomorrowStart)) {
-                return BookingSlotCutoff::cutoffBlackoutMessage();
-            }
         }
 
         return null;

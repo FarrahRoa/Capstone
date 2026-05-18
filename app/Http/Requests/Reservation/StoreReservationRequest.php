@@ -7,8 +7,8 @@ use App\Models\Space;
 use App\Models\User;
 use App\Models\Holiday;
 use App\Models\PolicyDocument;
-use App\Support\BookingSlotCutoff;
 use App\Support\ReservationDeanRouting;
+use App\Support\ReservationDurationPolicy;
 use App\Support\ReservationLeadTimePolicy;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -119,13 +119,13 @@ class StoreReservationRequest extends FormRequest
                 return;
             }
 
-            if (BookingSlotCutoff::reservationStartAtOrAfterCutoff($start, $tz)) {
-                $validator->errors()->add('start_at', BookingSlotCutoff::validationMessage());
+            if (! $this->user()->isAdmin() && PolicyDocument::isPastReservationCutoff()) {
+                $validator->errors()->add('reservation', PolicyDocument::reservationCutoffValidationMessage());
 
                 return;
             }
 
-            $leadTimeMessage = ReservationLeadTimePolicy::messageIfBlockedFor($this->user(), $start, $end);
+            $leadTimeMessage = ReservationLeadTimePolicy::messageIfBlockedFor($this->user(), $start, $end, null, $space);
             if ($leadTimeMessage !== null) {
                 $validator->errors()->add('start_at', $leadTimeMessage);
 
@@ -150,21 +150,21 @@ class StoreReservationRequest extends FormRequest
                 return;
             }
 
-            if (PolicyDocument::reservationOutsideOperatingHours($start, $end, $tz)) {
+            if (PolicyDocument::reservationOutsideOperatingHours($start, $end, $tz, $space)) {
                 $validator->errors()->add('start_at', 'The selected time is outside the library\'s operating hours.');
 
                 return;
             }
 
-            $userType = $this->user()->user_type ?? User::getUserTypeFromEmail((string) $this->user()->email);
-            $maxMinutes = $userType === User::USER_TYPE_STUDENT ? 120 : 180;
-            $maxHours = $maxMinutes / 60;
-            $durationMinutes = $start->diffInMinutes($end);
-            if ($durationMinutes > $maxMinutes) {
-                $validator->errors()->add(
-                    'end_at',
-                    "You have exceeded your maximum booking limit of {$maxHours} hours for your account type."
-                );
+            $durationMinutes = (int) $start->diffInMinutes($end);
+            $durationMessage = ReservationDurationPolicy::messageIfDurationExceedsCap(
+                $this->user(),
+                $space,
+                $durationMinutes
+            );
+            if ($durationMessage !== null) {
+                $validator->errors()->add('end_at', $durationMessage);
+
                 return;
             }
 
@@ -233,6 +233,12 @@ class StoreReservationRequest extends FormRequest
                     $this->user(),
                     $this->input('event_request_type')
                 );
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                foreach ($e->errors() as $field => $messages) {
+                    foreach ((array) $messages as $message) {
+                        $validator->errors()->add($field, $message);
+                    }
+                }
             } catch (Throwable) {
                 $validator->errors()->add('event_request_type', 'Invalid reservation audience for this space.');
             }

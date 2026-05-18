@@ -33,15 +33,15 @@ class OfficeController extends Controller
         $name = trim((string) $data['name']);
         $office = Office::query()->create(['name' => $name]);
 
-        if (!empty($data['approver_email'])) {
-            DeanEmailMapping::query()->create([
+        if (! empty($data['approver_email'])) {
+            DeanEmailMapping::query()->create(DeanEmailMapping::prepareOfficeDepartmentAttributes([
                 'affiliation_type' => DeanEmailMapping::TYPE_OFFICE_DEPARTMENT,
                 'affiliation_name' => $office->name,
                 'office_id' => $office->id,
                 'approver_name' => $data['approver_name'] ? trim((string) $data['approver_name']) : null,
                 'approver_email' => trim((string) $data['approver_email']),
                 'is_active' => array_key_exists('mapping_active', $data) ? (bool) $data['mapping_active'] : true,
-            ]);
+            ]));
         }
 
         return ApiResponse::message('Office created.', $office->fresh(), 201);
@@ -79,14 +79,14 @@ class OfficeController extends Controller
                 if (array_key_exists('mapping_active', $data)) $patch['is_active'] = (bool) $data['mapping_active'];
                 if ($patch !== []) $mapping->update($patch);
             } elseif ($email !== null) {
-                DeanEmailMapping::query()->create([
+                DeanEmailMapping::query()->create(DeanEmailMapping::prepareOfficeDepartmentAttributes([
                     'affiliation_type' => DeanEmailMapping::TYPE_OFFICE_DEPARTMENT,
                     'affiliation_name' => $office->name,
                     'office_id' => $office->id,
                     'approver_name' => $data['approver_name'] ? trim((string) $data['approver_name']) : null,
                     'approver_email' => $email,
                     'is_active' => array_key_exists('mapping_active', $data) ? (bool) $data['mapping_active'] : true,
-                ]);
+                ]));
             }
         }
 

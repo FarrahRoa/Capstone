@@ -130,7 +130,9 @@ function EditReservationModal({ open, onClose, reservation, onSaved }) {
     }, [open, reservation, spaceId, spaces]);
 
     const selectedSpace = spaces.find((s) => String(s.id) === String(spaceId));
-    const needsEventAudience = Boolean(selectedSpace && (selectedSpace.type === 'avr' || selectedSpace.type === 'lobby'));
+    const needsEventAudience = Boolean(
+        selectedSpace && (selectedSpace.type === 'avr' || selectedSpace.type === 'lobby'),
+    );
 
     const standardDayWindow = useMemo(
         () => resolveOperatingWindowForYmd(operatingHoursConfig, wc.date || ''),

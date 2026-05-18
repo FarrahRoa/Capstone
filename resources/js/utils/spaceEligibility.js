@@ -34,6 +34,10 @@ export function getSpaceIneligibilityMessage(space, user) {
 
     const userType = String(user?.user_type || '').toLowerCase();
 
+    if (space.type === 'avr' && userType !== 'faculty_staff') {
+        return 'Your account type or affiliation does not have permission to reserve this specific space.';
+    }
+
     if (userType === 'student') {
         if (space.type === 'confab') return '';
         if (space.type === SPACE_TYPE_MEDICAL_CONFAB) {

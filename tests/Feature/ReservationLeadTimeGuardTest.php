@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\Space;
 use App\Models\User;
+use App\Models\PolicyDocument;
 use App\Support\ReservationLeadTimePolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -109,7 +110,7 @@ class ReservationLeadTimeGuardTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath('errors.start_at.0', ReservationLeadTimePolicy::CUTOFF_BLACKOUT_MESSAGE);
+        $response->assertJsonPath('errors.reservation.0', PolicyDocument::reservationCutoffValidationMessage());
     }
 
     public function test_blocks_day_after_tomorrow_during_evening_blackout(): void
@@ -128,7 +129,7 @@ class ReservationLeadTimeGuardTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath('errors.start_at.0', ReservationLeadTimePolicy::CUTOFF_BLACKOUT_MESSAGE);
+        $response->assertJsonPath('errors.reservation.0', PolicyDocument::reservationCutoffValidationMessage());
     }
 
     public function test_blocks_tomorrow_before_nine_am_morning_blackout(): void
@@ -147,7 +148,7 @@ class ReservationLeadTimeGuardTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath('errors.start_at.0', ReservationLeadTimePolicy::CUTOFF_BLACKOUT_MESSAGE);
+        $response->assertJsonPath('errors.reservation.0', PolicyDocument::reservationCutoffValidationMessage());
     }
 
     public function test_allows_tomorrow_at_exactly_nine_am_after_blackout(): void

@@ -6,8 +6,8 @@ use App\Models\PolicyDocument;
 use Carbon\Carbon;
 
 /**
- * Institutional rule: no new reservations may start at or after 4:30 PM (Manila wall clock).
- * The public schedule may still show later operating-hour blocks as unavailable.
+ * 4:30 PM Manila submission cutoff constants.
+ * Submission timing is enforced via {@see PolicyDocument::isPastReservationCutoff()} (current time only).
  */
 final class BookingSlotCutoff
 {
@@ -27,6 +27,9 @@ final class BookingSlotCutoff
         return $startMinutes >= self::cutoffMinutes();
     }
 
+    /**
+     * @deprecated Submission cutoff uses {@see PolicyDocument::isPastReservationCutoff()} (server clock only).
+     */
     public static function reservationStartAtOrAfterCutoff(Carbon $start, string $tz): bool
     {
         $local = $start->copy()->timezone($tz);
@@ -34,17 +37,19 @@ final class BookingSlotCutoff
         return ($local->hour * 60 + $local->minute) >= self::cutoffMinutes();
     }
 
+    /** @deprecated Use {@see PolicyDocument::reservationCutoffValidationMessage()}. */
     public static function validationMessage(): string
     {
-        return 'Reservations cannot start at or after 4:30 PM.';
+        return PolicyDocument::reservationCutoffValidationMessage();
     }
 
+    /** @deprecated Use {@see PolicyDocument::reservationCutoffValidationMessage()}. */
     public static function cutoffBlackoutMessage(): string
     {
         $hours = PolicyDocument::decodedOperatingHours();
         $resume = self::formatHhmm12((string) ($hours['day_start'] ?? '06:00'));
 
-        return "Reservations are unavailable after 4:30 PM. Booking resumes at {$resume} tomorrow.";
+        return PolicyDocument::reservationCutoffValidationMessage();
     }
 
     public static function morningResetMinutes(): int

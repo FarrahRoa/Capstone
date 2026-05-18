@@ -1,5 +1,8 @@
 import { BOOKING_TIMEZONE } from './timeDisplay';
-import { BOOKING_CUTOFF_MINUTES, cutoffBlackoutMessage, wallClockToMinutes } from './bookingSlotCutoff';
+import {
+    isPastReservationSubmissionCutoff,
+    reservationCutoffValidationMessage,
+} from './bookingSlotCutoff';
 import { MANILA_OFFSET, manilaYmdFromInstant, shiftManilaYmd } from './manilaTime';
 
 /** @deprecated Prefer {@link SAME_DAY_DENIED_MESSAGE} or {@link cutoffBlackoutMessage}. */
@@ -8,9 +11,9 @@ export const RESERVATION_LEAD_TIME_DENIED_MESSAGE =
 
 export const SAME_DAY_DENIED_MESSAGE = 'Same-day reservations are not allowed.';
 
-/** @deprecated Use {@link cutoffBlackoutMessage} with operating hours config. */
+/** @deprecated Use {@link reservationCutoffValidationMessage}. */
 export const CUTOFF_BLACKOUT_MESSAGE =
-    'Reservations are unavailable after 4:30 PM. Booking resumes tomorrow morning.';
+    'Reservations are closed for today. You may reserve again starting 9:00 AM tomorrow.';
 
 /**
  * Minutes since Manila midnight for an instant (for comparing to the 4:30 PM cutoff).
@@ -30,18 +33,12 @@ export function manilaMinutesSinceMidnight(date = new Date()) {
 }
 
 /**
- * Evening blackout: from 4:30 PM inclusive until library day_start exclusive (Manila wall clock).
+ * Submission closed window: from 4:30 PM inclusive until 9:00 AM exclusive (Manila wall clock).
  *
  * @param {Date} [date]
- * @param {{ day_start?: string }} [operatingHoursConfig]
  */
-export function isInEveningBookingBlackout(date = new Date(), operatingHoursConfig = null) {
-    const mins = manilaMinutesSinceMidnight(date);
-    const resetMinutes =
-        operatingHoursConfig?.day_start != null
-            ? wallClockToMinutes(operatingHoursConfig.day_start)
-            : 6 * 60;
-    return mins >= BOOKING_CUTOFF_MINUTES || mins < resetMinutes;
+export function isInEveningBookingBlackout(date = new Date()) {
+    return isPastReservationSubmissionCutoff(date);
 }
 
 /**
@@ -77,17 +74,17 @@ export function getMinimumBookableManilaYmd(refDate = new Date()) {
 export function policyBlockReasonForManilaReservationDay(
     selectedYmd,
     refDate = new Date(),
-    operatingHoursConfig = null
+    operatingHoursConfig = null,
+    options = null
 ) {
-    const today = manilaYmdFromInstant(refDate);
-    if (selectedYmd === today) {
-        return SAME_DAY_DENIED_MESSAGE;
+    void operatingHoursConfig;
+    if (isPastReservationSubmissionCutoff(refDate)) {
+        return reservationCutoffValidationMessage();
     }
-    if (isInEveningBookingBlackout(refDate, operatingHoursConfig)) {
-        const tomorrow = manilaTomorrowYmd(refDate);
-        if (selectedYmd >= tomorrow) {
-            return cutoffBlackoutMessage(operatingHoursConfig || { day_start: '06:00' });
-        }
+    const today = manilaYmdFromInstant(refDate);
+    const allowSameDay = options?.allowSameDay === true;
+    if (!allowSameDay && selectedYmd === today) {
+        return SAME_DAY_DENIED_MESSAGE;
     }
     return null;
 }
@@ -110,17 +107,19 @@ function rangeOverlapsManilaCalendarDayIso(startIso, endIso, dayYmd) {
 /**
  * True when `[start_iso, end_iso)` must be rejected for standard users (matches server).
  */
-export function standardUserBookingViolatesLeadTimeRules(startIso, endIso, refDate = new Date()) {
-    const today = manilaYmdFromInstant(refDate);
-    if (rangeOverlapsManilaCalendarDayIso(startIso, endIso, today)) {
+export function standardUserBookingViolatesLeadTimeRules(
+    startIso,
+    endIso,
+    refDate = new Date(),
+    options = null
+) {
+    if (isPastReservationSubmissionCutoff(refDate)) {
         return true;
     }
-    if (isInEveningBookingBlackout(refDate)) {
-        const tomorrow = manilaTomorrowYmd(refDate);
-        const startYmd = manilaYmdFromInstant(new Date(startIso));
-        if (startYmd >= tomorrow) {
-            return true;
-        }
+    const today = manilaYmdFromInstant(refDate);
+    const allowSameDay = options?.allowSameDay === true;
+    if (!allowSameDay && rangeOverlapsManilaCalendarDayIso(startIso, endIso, today)) {
+        return true;
     }
     return false;
 }
@@ -128,13 +127,21 @@ export function standardUserBookingViolatesLeadTimeRules(startIso, endIso, refDa
 /**
  * User-facing message when {@link standardUserBookingViolatesLeadTimeRules} is true.
  */
-export function messageForLeadTimeViolation(startIso, endIso, refDate = new Date(), operatingHoursConfig = null) {
-    const today = manilaYmdFromInstant(refDate);
-    if (rangeOverlapsManilaCalendarDayIso(startIso, endIso, today)) {
-        return SAME_DAY_DENIED_MESSAGE;
+export function messageForLeadTimeViolation(
+    startIso,
+    endIso,
+    refDate = new Date(),
+    operatingHoursConfig = null,
+    options = null
+) {
+    void operatingHoursConfig;
+    if (isPastReservationSubmissionCutoff(refDate)) {
+        return reservationCutoffValidationMessage();
     }
-    if (isInEveningBookingBlackout(refDate, operatingHoursConfig)) {
-        return cutoffBlackoutMessage(operatingHoursConfig || { day_start: '06:00' });
+    const today = manilaYmdFromInstant(refDate);
+    const allowSameDay = options?.allowSameDay === true;
+    if (!allowSameDay && rangeOverlapsManilaCalendarDayIso(startIso, endIso, today)) {
+        return SAME_DAY_DENIED_MESSAGE;
     }
     return RESERVATION_LEAD_TIME_DENIED_MESSAGE;
 }

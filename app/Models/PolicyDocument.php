@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\BookingSlotCutoff;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -206,11 +207,40 @@ class PolicyDocument extends Model
         ];
     }
 
+    public const SUBMISSION_CUTOFF_RESUME_HOUR = 9;
+
+    public const SUBMISSION_CUTOFF_RESUME_MINUTE = 0;
+
+    /**
+     * True when new reservation submissions are closed (4:30 PM–9:00 AM Manila/app tz wall clock).
+     * Uses current server time only — never reservation start/end instants.
+     */
+    public static function isPastReservationCutoff(?CarbonInterface $now = null): bool
+    {
+        $tz = (string) config('app.timezone');
+        $now = ($now ?? Carbon::now($tz))->copy()->timezone($tz);
+        $minutes = $now->hour * 60 + $now->minute;
+        $cutoffMinutes = BookingSlotCutoff::cutoffMinutes();
+        $resumeMinutes = self::SUBMISSION_CUTOFF_RESUME_HOUR * 60 + self::SUBMISSION_CUTOFF_RESUME_MINUTE;
+
+        return $minutes >= $cutoffMinutes || $minutes < $resumeMinutes;
+    }
+
+    public static function reservationCutoffValidationMessage(): string
+    {
+        return 'Reservations are closed for today. You may reserve again starting 9:00 AM tomorrow.';
+    }
+
     /**
      * True if some portion of [start, end) falls outside daily open/close windows (per Manila/app tz calendar day).
+     * AVR and Lobby are exempt (multi-day / extended-hour events).
      */
-    public static function reservationOutsideOperatingHours($start, $end, string $tz): bool
+    public static function reservationOutsideOperatingHours($start, $end, string $tz, ?Space $space = null): bool
     {
+        if ($space !== null && $space->exemptFromOperatingHoursValidation()) {
+            return false;
+        }
+
         try {
             $start = $start instanceof Carbon ? $start : Carbon::parse((string) $start, $tz);
             $end = $end instanceof Carbon ? $end : Carbon::parse((string) $end, $tz);

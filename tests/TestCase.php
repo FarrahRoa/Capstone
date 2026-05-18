@@ -16,6 +16,7 @@ abstract class TestCase extends BaseTestCase
         DeanEmailMapping::create([
             'affiliation_type' => DeanEmailMapping::TYPE_OFFICE_DEPARTMENT,
             'affiliation_name' => ReservationDeanRouting::ORGANIZATION_DEAN_AFFILIATION_NAME,
+            'office_code' => DeanEmailMapping::OFFICE_CODE_SACDEV,
             'approver_name' => 'SACDEV Approver',
             'approver_email' => $email,
             'is_active' => true,

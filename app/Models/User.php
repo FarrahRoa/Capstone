@@ -332,6 +332,10 @@ class User extends Authenticatable
         $userType = $this->user_type ?? self::getUserTypeFromEmail((string) $this->email);
         $spaceType = (string) ($space->type ?? '');
 
+        if ($spaceType === Space::TYPE_AVR && $userType !== self::USER_TYPE_FACULTY_STAFF) {
+            return 'Your account type or affiliation does not have permission to reserve this specific space.';
+        }
+
         // Non-student-role accounts classified as students by email/domain.
         if ($userType === self::USER_TYPE_STUDENT) {
             if ($spaceType === Space::TYPE_CONFAB) {

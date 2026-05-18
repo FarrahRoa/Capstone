@@ -467,9 +467,6 @@ class AvailabilityController extends Controller
             $window['start'],
             $window['end'],
             function (int $startM) use ($dayStart, $reservationsOnDay, &$foundBookableWindow, &$allBookableSlotsTaken): void {
-                if (BookingSlotCutoff::slotStartMinutesAtOrAfterCutoff($startM)) {
-                    return;
-                }
                 $foundBookableWindow = true;
                 $slotStart = $dayStart->copy()->startOfDay()->addMinutes($startM);
                 $slotEnd = $slotStart->copy()->addMinutes(30);

@@ -60,14 +60,22 @@ class DeanEmailMappingController extends Controller
 
         $data['affiliation_name'] = trim($data['affiliation_name']);
         $this->assertAffiliationNameAllowed($data['affiliation_type'], $data['affiliation_name']);
+        $data = DeanEmailMapping::prepareOfficeDepartmentAttributes($data);
 
         // Avoid ambiguous routing: prevent multiple active mappings for the same affiliation.
         if (($data['is_active'] ?? true) === true) {
-            $exists = DeanEmailMapping::query()
+            $existsQuery = DeanEmailMapping::query()
                 ->where('affiliation_type', $data['affiliation_type'])
-                ->where('affiliation_name', $data['affiliation_name'])
-                ->where('is_active', true)
-                ->exists();
+                ->where('is_active', true);
+
+            if ($data['affiliation_type'] === DeanEmailMapping::TYPE_OFFICE_DEPARTMENT
+                && ! empty($data['office_code'])) {
+                $existsQuery->where('office_code', $data['office_code']);
+            } else {
+                $existsQuery->where('affiliation_name', $data['affiliation_name']);
+            }
+
+            $exists = $existsQuery->exists();
             if ($exists) {
                 throw ValidationException::withMessages([
                     'affiliation_name' => ['An active mapping for this affiliation already exists.'],
@@ -103,15 +111,32 @@ class DeanEmailMappingController extends Controller
             $this->assertAffiliationNameAllowed($nextType, $nextName);
         }
 
+        $merged = array_merge($deanEmailMapping->only([
+            'affiliation_type',
+            'affiliation_name',
+            'office_code',
+            'office_id',
+            'is_active',
+        ]), $data);
+        $data = array_merge($data, DeanEmailMapping::prepareOfficeDepartmentAttributes($merged));
+        unset($merged);
+
         $nextActive = array_key_exists('is_active', $data) ? (bool) $data['is_active'] : (bool) $deanEmailMapping->is_active;
 
         if ($nextActive) {
-            $exists = DeanEmailMapping::query()
+            $existsQuery = DeanEmailMapping::query()
                 ->where('id', '<>', $deanEmailMapping->id)
                 ->where('affiliation_type', $nextType)
-                ->where('affiliation_name', $nextName)
-                ->where('is_active', true)
-                ->exists();
+                ->where('is_active', true);
+
+            $officeCode = $data['office_code'] ?? DeanEmailMapping::normalizeOfficeCode($nextName);
+            if ($nextType === DeanEmailMapping::TYPE_OFFICE_DEPARTMENT && $officeCode !== null) {
+                $existsQuery->where('office_code', $officeCode);
+            } else {
+                $existsQuery->where('affiliation_name', $nextName);
+            }
+
+            $exists = $existsQuery->exists();
             if ($exists) {
                 throw ValidationException::withMessages([
                     'affiliation_name' => ['An active mapping for this affiliation already exists.'],

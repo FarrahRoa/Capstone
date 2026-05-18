@@ -1,5 +1,4 @@
 import { BOOKING_TIMEZONE } from './timeDisplay';
-import { isSlotStartAtOrAfterBookingCutoff } from './bookingSlotCutoff';
 
 /** Philippines does not observe DST; PHT is always UTC+8. */
 export const MANILA_OFFSET = '+08:00';
@@ -301,18 +300,14 @@ export function buildManilaHalfHourSlotsForWindow(dateYmd, reserved, openHhmm, c
         }
         const startParts = minutesToWallParts(startM);
         const endParts = minutesToWallParts(endM);
-        const bookingCutoffBlocked = isSlotStartAtOrAfterBookingCutoff(
-            startParts.hour,
-            startParts.minute
-        );
-        const status = bookingCutoffBlocked ? 'unavailable_cutoff' : busy ? 'occupied' : 'available';
+        const status = busy ? 'occupied' : 'available';
         slots.push({
             hourStart: startParts.hour,
             minuteStart: startParts.minute,
             hourEnd: endParts.hour,
             minuteEnd: endParts.minute,
-            available: !busy && !bookingCutoffBlocked,
-            bookingCutoffBlocked,
+            available: !busy,
+            bookingCutoffBlocked: false,
             status,
         });
     }

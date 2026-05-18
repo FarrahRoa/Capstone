@@ -28,20 +28,7 @@ final class ReservationDeanRouting
 
     public static function activeMappingForOrganizationAvrLobby(): ?DeanEmailMapping
     {
-        $office = Office::query()->where('name', self::ORGANIZATION_DEAN_AFFILIATION_NAME)->first();
-        if (! $office) {
-            // Legacy fallback: name-based mapping
-            return DeanEmailMapping::query()
-                ->where('is_active', true)
-                ->where('affiliation_type', DeanEmailMapping::TYPE_OFFICE_DEPARTMENT)
-                ->where('affiliation_name', self::ORGANIZATION_DEAN_AFFILIATION_NAME)
-                ->first();
-        }
-
-        return DeanEmailMapping::query()
-            ->where('is_active', true)
-            ->where('office_id', $office->id)
-            ->first();
+        return DeanEmailMapping::findActiveForOfficeCode(self::ORGANIZATION_DEAN_AFFILIATION_NAME);
     }
 
     public static function activeMappingForUserAffiliation(User $user): ?DeanEmailMapping
@@ -172,6 +159,9 @@ final class ReservationDeanRouting
     }
 
     /**
+     * AVR/Lobby: require event audience and ensure an approver route exists (SACDEV or college/office dean).
+     * Does not validate seating — only approval routing.
+     *
      * @param  ?string  $eventRequestType  raw request value; null/'' when not applicable
      */
     public static function assertAudienceAndDeanMappingForReservation(

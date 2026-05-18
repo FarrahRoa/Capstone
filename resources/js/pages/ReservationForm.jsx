@@ -21,6 +21,10 @@ import {
 } from '../utils/reservationBookingTimes';
 import { unwrapData } from '../utils/apiEnvelope';
 import {
+    durationLimitMessage,
+    maxBookingMinutesFor,
+} from '../utils/reservationDurationPolicy';
+import {
     allowedEndHhmmList,
     allowedEndHhmmListAvrRange,
     allowedStartHhmmList,
@@ -186,13 +190,13 @@ export default function ReservationForm() {
         endTime,
     ]);
 
-    const roleSlug = (user?.role?.slug || '').toLowerCase();
-    const userType = (user?.user_type || '').toLowerCase();
-    const maxBookingMinutes = roleSlug === 'student' || userType === 'student' ? 120 : 180;
-    const maxBookingHours = maxBookingMinutes / 60;
+    const maxBookingMinutes = useMemo(
+        () => maxBookingMinutesFor(user, selectedSpace),
+        [user, selectedSpace],
+    );
 
     const durationLimitError = useMemo(() => {
-        if (!spaceIdVal || !selectedSpace) {
+        if (!spaceIdVal || !selectedSpace || maxBookingMinutes == null) {
             return '';
         }
         let wallFields;
@@ -218,7 +222,7 @@ export default function ReservationForm() {
             return '';
         }
         if (mins > maxBookingMinutes) {
-            return `You have exceeded your maximum booking limit of ${maxBookingHours} hours for your account type.`;
+            return durationLimitMessage(maxBookingMinutes);
         }
         return '';
     }, [
@@ -233,7 +237,6 @@ export default function ReservationForm() {
         startTime,
         endTime,
         maxBookingMinutes,
-        maxBookingHours,
     ]);
 
     useEffect(() => {
@@ -488,15 +491,27 @@ export default function ReservationForm() {
         return policyBlockReasonForManilaReservationDay(date, policyClock);
     }, [reservationLeadTimeExempt, bookingKind, date, policyClock]);
 
+    const avrLobbyLeadTimeOptions = useMemo(() => ({ allowSameDay: true }), []);
+
     const avrRangeStartPolicyReason = useMemo(() => {
         if (reservationLeadTimeExempt || bookingKind !== 'avr_range') return null;
-        return policyBlockReasonForManilaReservationDay(rangeStartDate, policyClock);
-    }, [reservationLeadTimeExempt, bookingKind, rangeStartDate, policyClock]);
+        return policyBlockReasonForManilaReservationDay(
+            rangeStartDate,
+            policyClock,
+            null,
+            avrLobbyLeadTimeOptions,
+        );
+    }, [reservationLeadTimeExempt, bookingKind, rangeStartDate, policyClock, avrLobbyLeadTimeOptions]);
 
     const avrRangeEndPolicyReason = useMemo(() => {
         if (reservationLeadTimeExempt || bookingKind !== 'avr_range') return null;
-        return policyBlockReasonForManilaReservationDay(rangeEndDate, policyClock);
-    }, [reservationLeadTimeExempt, bookingKind, rangeEndDate, policyClock]);
+        return policyBlockReasonForManilaReservationDay(
+            rangeEndDate,
+            policyClock,
+            null,
+            avrLobbyLeadTimeOptions,
+        );
+    }, [reservationLeadTimeExempt, bookingKind, rangeEndDate, policyClock, avrLobbyLeadTimeOptions]);
 
     const avrRangeEndDateInputMin = useMemo(() => {
         if (bookingKind !== 'avr_range') return undefined;
@@ -531,8 +546,11 @@ export default function ReservationForm() {
             return '';
         }
         const { start_at, end_at } = buildStartEndPayloadFromWallClock(bookingKind, wallFields);
-        if (standardUserBookingViolatesLeadTimeRules(start_at, end_at, policyClock)) {
-            return messageForLeadTimeViolation(start_at, end_at, policyClock);
+        const spaceType = String(selectedSpace?.type || '').toLowerCase();
+        const leadTimeOptions =
+            spaceType === 'avr' || spaceType === 'lobby' ? { allowSameDay: true } : null;
+        if (standardUserBookingViolatesLeadTimeRules(start_at, end_at, policyClock, leadTimeOptions)) {
+            return messageForLeadTimeViolation(start_at, end_at, policyClock, null, leadTimeOptions);
         }
         return '';
     }, [

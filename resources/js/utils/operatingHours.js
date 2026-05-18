@@ -1,5 +1,4 @@
 import { joinHalfHourWallClockHhmm, splitHalfHourWallClockHhmm } from './halfHourWallClockInput';
-import { BOOKING_CUTOFF_MINUTES } from './bookingSlotCutoff';
 import { buildManilaHalfHourSlotsForWindow, MANILA_OFFSET, manilaWeekdaySun0, manilaYmdFromInstant } from './manilaTime';
 
 /** Safe grid when API/client slot builders fail — never pass undefined into .map(). */
@@ -161,9 +160,9 @@ export function halfHourMarkersInclusive(openHhmm, closeHhmm) {
     return out;
 }
 
-/** Start times: half-hour marks strictly before close and before the 4:30 PM booking cutoff. */
+/** Start times: half-hour marks strictly before close. */
 export function allowedStartHhmmList(openHhmm, closeHhmm) {
-    const closeM = Math.min(hhmmToMinutes(closeHhmm), BOOKING_CUTOFF_MINUTES);
+    const closeM = hhmmToMinutes(closeHhmm);
     return halfHourMarkersInclusive(openHhmm, closeHhmm).filter((t) => hhmmToMinutes(t) < closeM);
 }
 
@@ -231,7 +230,13 @@ function compareYmd(a, b) {
  * @param {string} endIso
  * @param {{ day_start: string, day_end: string, weekend_day_start: string|null, weekend_day_end: string|null }} config
  */
-export function reservationViolatesOperatingWindows(startIso, endIso, config) {
+/**
+ * @param {boolean} [exemptFromOperatingHours]
+ */
+export function reservationViolatesOperatingWindows(startIso, endIso, config, exemptFromOperatingHours = false) {
+    if (exemptFromOperatingHours) {
+        return false;
+    }
     const startMs = Date.parse(startIso);
     const endMs = Date.parse(endIso);
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !(endMs > startMs)) {
@@ -275,9 +280,17 @@ export function reservationViolatesOperatingWindows(startIso, endIso, config) {
  * @param {{ day_start: string, day_end: string, weekend_day_start: string|null, weekend_day_end: string|null }} config
  * @param {(kind: string, fields: Record<string, string>) => { start_at: string, end_at: string }} buildStartEndPayloadFromWallClock
  */
-export function operatingHoursWallClockError(bookingKind, fields, config, buildStartEndPayloadFromWallClock) {
+export function operatingHoursWallClockError(
+    bookingKind,
+    fields,
+    config,
+    buildStartEndPayloadFromWallClock,
+    exemptFromOperatingHours = false
+) {
     const { start_at, end_at } = buildStartEndPayloadFromWallClock(bookingKind, fields);
-    if (reservationViolatesOperatingWindows(start_at, end_at, config)) {
+    if (
+        reservationViolatesOperatingWindows(start_at, end_at, config, exemptFromOperatingHours || bookingKind === 'avr_range')
+    ) {
         return 'The selected time is outside the library\'s operating hours.';
     }
     return '';

@@ -44,6 +44,12 @@ class Space extends Model
         return (bool) $this->is_confab_pool;
     }
 
+    /** AVR and Lobby may span multi-day ranges outside library operating-hour windows. */
+    public function exemptFromOperatingHoursValidation(): bool
+    {
+        return in_array((string) $this->type, [self::TYPE_AVR, self::TYPE_LOBBY], true);
+    }
+
     /**
      * Physical confab rooms (not the assignment pool).
      */

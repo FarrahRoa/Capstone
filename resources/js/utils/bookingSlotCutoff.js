@@ -1,7 +1,10 @@
-/** Institutional booking cutoff — Manila wall clock, 24h comparisons only. */
+/** Institutional submission cutoff — Manila wall clock (current time only on server). */
 export const BOOKING_CUTOFF_HHMM = '16:30';
 
 export const BOOKING_CUTOFF_MINUTES = 16 * 60 + 30;
+
+/** Submissions reopen at 9:00 AM Manila (matches PolicyDocument::SUBMISSION_CUTOFF_RESUME_*). */
+export const SUBMISSION_RESUME_MINUTES = 9 * 60;
 
 export function wallClockToMinutes(hhmm) {
     const [h, m] = String(hhmm || '00:00').split(':').map((x) => Number(x));
@@ -28,10 +31,29 @@ export function formatHhmm12(hhmm) {
     }).format(d);
 }
 
+export function reservationCutoffValidationMessage() {
+    return 'Reservations are closed for today. You may reserve again starting 9:00 AM tomorrow.';
+}
+
 /**
- * @param {{ day_start?: string }} operatingHoursConfig
+ * True when the submission window is closed (4:30 PM–9:00 AM Manila). Uses ref clock only.
+ *
+ * @param {Date} [refDate]
  */
-export function cutoffBlackoutMessage(operatingHoursConfig) {
-    const resume = formatHhmm12(operatingHoursConfig?.day_start || '06:00');
-    return `Reservations are unavailable after 4:30 PM. Booking resumes at ${resume} tomorrow.`;
+export function isPastReservationSubmissionCutoff(refDate = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Manila',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).formatToParts(refDate);
+    const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+    const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+    const mins = hh * 60 + mm;
+    return mins >= BOOKING_CUTOFF_MINUTES || mins < SUBMISSION_RESUME_MINUTES;
+}
+
+/** @deprecated Use {@link reservationCutoffValidationMessage}. */
+export function cutoffBlackoutMessage() {
+    return reservationCutoffValidationMessage();
 }
